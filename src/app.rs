@@ -24,6 +24,11 @@ pub enum EditorFocus {
     Body,
 }
 
+pub enum LeftPanelTab {
+    Collections,
+    History,
+}
+
 pub struct App<'a> {
     pub url_area: TextArea<'a>,
     pub headers_area: TextArea<'a>,
@@ -33,11 +38,13 @@ pub struct App<'a> {
     pub ai_response: String,
     pub active_panel: ActivePanel,
     pub editor_focus: EditorFocus,
+    pub left_panel_tab: LeftPanelTab,
     pub input_mode: bool,
+    pub is_ai_loading: bool,
     pub tx: mpsc::Sender<String>,
     pub rx: mpsc::Receiver<String>,
     pub collections: CollectionManager,
-    pub selected_collection_idx: usize,
+    pub selected_idx: usize,
     pub response_scroll: u16,
     pub last_click_time: Instant,
     pub url_rect: Rect,
@@ -62,14 +69,16 @@ impl<'a> App<'a> {
             body_area,
             method: "GET".to_string(),
             response: "".to_string(),
-            ai_response: "ARTHEMA SYSTEM READY".to_string(),
+            ai_response: "ARTHEMA NEURAL LINK READY".to_string(),
             active_panel: ActivePanel::Editor,
             editor_focus: EditorFocus::Url,
+            left_panel_tab: LeftPanelTab::Collections,
             input_mode: false,
+            is_ai_loading: false,
             tx,
             rx,
             collections,
-            selected_collection_idx: 0,
+            selected_idx: 0,
             response_scroll: 0,
             last_click_time: Instant::now(),
             url_rect: Rect::default(),
@@ -83,40 +92,23 @@ impl<'a> App<'a> {
         let y = mouse.row;
 
         if let MouseEventKind::Down(_) = mouse.kind {
-            let now = Instant::now();
-            let is_double = now.duration_since(self.last_click_time) < Duration::from_millis(400);
-            self.last_click_time = now;
-
-            // 1. Detección de Foco y Posicionamiento Forzado
             if self.url_rect.contains(ratatui::layout::Position { x, y }) {
                 self.active_panel = ActivePanel::Editor;
                 self.editor_focus = EditorFocus::Url;
                 self.input_mode = true;
-                let rel_x = x.saturating_sub(self.url_rect.x + 1);
-                let rel_y = y.saturating_sub(self.url_rect.y + 1);
-                self.url_area.move_cursor(CursorMove::Jump(rel_y, rel_x));
+                self.url_area.move_cursor(CursorMove::Jump(y.saturating_sub(self.url_rect.y + 1), x.saturating_sub(self.url_rect.x + 1)));
             } else if self.headers_rect.contains(ratatui::layout::Position { x, y }) {
                 self.active_panel = ActivePanel::Editor;
                 self.editor_focus = EditorFocus::Headers;
                 self.input_mode = true;
-                let rel_x = x.saturating_sub(self.headers_rect.x + 1);
-                let rel_y = y.saturating_sub(self.headers_rect.y + 1);
-                self.headers_area.move_cursor(CursorMove::Jump(rel_y, rel_x));
+                self.headers_area.move_cursor(CursorMove::Jump(y.saturating_sub(self.headers_rect.y + 1), x.saturating_sub(self.headers_rect.x + 1)));
             } else if self.body_rect.contains(ratatui::layout::Position { x, y }) {
                 self.active_panel = ActivePanel::Editor;
                 self.editor_focus = EditorFocus::Body;
                 self.input_mode = true;
-                let rel_x = x.saturating_sub(self.body_rect.x + 1);
-                let rel_y = y.saturating_sub(self.body_rect.y + 1);
-                self.body_area.move_cursor(CursorMove::Jump(rel_y, rel_x));
+                self.body_area.move_cursor(CursorMove::Jump(y.saturating_sub(self.body_rect.y + 1), x.saturating_sub(self.body_rect.x + 1)));
             } else if x < self.url_rect.x {
                 self.active_panel = ActivePanel::Collections;
-            } else if x > (self.url_rect.x + self.url_rect.width) {
-                self.active_panel = ActivePanel::AI;
-            }
-            
-            if is_double && matches!(self.active_panel, ActivePanel::Editor) {
-                self.select_all_active();
             }
         }
     }
@@ -144,15 +136,16 @@ impl<'a> App<'a> {
 
         match key.code {
             KeyCode::Char('i') => self.input_mode = true,
-            KeyCode::Char('c') => self.copy_to_system(),
+            KeyCode::Char('h') => self.toggle_left_panel(),
             KeyCode::Char('m') => self.cycle_method(),
             KeyCode::Char('f') => self.cycle_editor_focus(),
             KeyCode::Char('a') => self.trigger_ai_suggestion(),
             KeyCode::Char('e') => self.trigger_ai_explain(),
+            KeyCode::Char('x') => self.trigger_ai_fix(),
             KeyCode::Char('s') => self.save_current_request(),
             KeyCode::Enter => {
                 if matches!(self.active_panel, ActivePanel::Collections) {
-                    self.load_selected_collection();
+                    self.load_selected_item();
                 } else {
                     self.send_request();
                 }
@@ -164,16 +157,12 @@ impl<'a> App<'a> {
         }
     }
 
-    fn select_all_active(&mut self) {
-        let area = match self.editor_focus {
-            EditorFocus::Url => &mut self.url_area,
-            EditorFocus::Headers => &mut self.headers_area,
-            EditorFocus::Body => &mut self.body_area,
+    fn toggle_left_panel(&mut self) {
+        self.left_panel_tab = match self.left_panel_tab {
+            LeftPanelTab::Collections => LeftPanelTab::History,
+            LeftPanelTab::History => LeftPanelTab::Collections,
         };
-        area.move_cursor(tui_textarea::CursorMove::Top);
-        area.start_selection();
-        area.move_cursor(tui_textarea::CursorMove::Bottom);
-        area.move_cursor(tui_textarea::CursorMove::End);
+        self.selected_idx = 0;
     }
 
     fn undo_active(&mut self) {
@@ -198,11 +187,12 @@ impl<'a> App<'a> {
             _ => "".to_string(),
         };
         if text.is_empty() { return; }
-        if let Ok(mut child) = Command::new("pbcopy").stdin(Stdio::piped()).spawn() {
+        let _ = Command::new("pbcopy").stdin(Stdio::piped()).spawn().and_then(|mut child| {
             if let Some(mut stdin) = child.stdin.take() { let _ = stdin.write_all(text.as_bytes()); }
             let _ = child.wait();
-            self.ai_response = format!("SYSTEM: Copied {} chars.", text.len());
-        }
+            Ok(())
+        });
+        self.ai_response = "SYSTEM: Copied to clipboard.".to_string();
     }
 
     fn paste_from_pbpaste(&mut self) {
@@ -235,10 +225,13 @@ impl<'a> App<'a> {
     fn move_selection(&mut self, delta: i32) {
         match self.active_panel {
             ActivePanel::Collections => {
-                let count = self.collections.requests.len();
+                let count = match self.left_panel_tab {
+                    LeftPanelTab::Collections => self.collections.requests.len(),
+                    LeftPanelTab::History => self.collections.history.len(),
+                };
                 if count > 0 {
-                    let new_idx = (self.selected_collection_idx as i32 + delta).rem_euclid(count as i32);
-                    self.selected_collection_idx = new_idx as usize;
+                    let new_idx = (self.selected_idx as i32 + delta).rem_euclid(count as i32);
+                    self.selected_idx = new_idx as usize;
                 }
             }
             ActivePanel::Response => {
@@ -249,15 +242,17 @@ impl<'a> App<'a> {
         }
     }
 
-    fn load_selected_collection(&mut self) {
-        if let Some(req) = self.collections.requests.get(self.selected_collection_idx) {
-            self.url_area = TextArea::default();
-            self.url_area.insert_str(&req.url);
-            self.headers_area = TextArea::default();
+    fn load_selected_item(&mut self) {
+        let req_opt = match self.left_panel_tab {
+            LeftPanelTab::Collections => self.collections.requests.get(self.selected_idx),
+            LeftPanelTab::History => self.collections.history.get(self.selected_idx),
+        };
+        if let Some(req) = req_opt {
+            self.url_area = TextArea::default(); self.url_area.insert_str(&req.url);
+            self.headers_area = TextArea::default(); 
             let h_str = req.headers.iter().map(|(k, v)| format!("{}: {}", k, v)).collect::<Vec<_>>().join("\n");
             self.headers_area.insert_str(h_str);
-            self.body_area = TextArea::default();
-            if let Some(b) = &req.body { self.body_area.insert_str(b); }
+            self.body_area = TextArea::default(); if let Some(b) = &req.body { self.body_area.insert_str(b); }
             self.method = req.method.clone();
             self.active_panel = ActivePanel::Editor;
         }
@@ -280,10 +275,8 @@ impl<'a> App<'a> {
         }
         let new_req = ApiRequest {
             name: format!("Req_{}", self.collections.requests.len() + 1),
-            url: self.url_area.lines()[0].clone(),
-            method: self.method.clone(),
-            headers,
-            body: Some(self.body_area.lines().join("\n")),
+            url: self.url_area.lines()[0].clone(), method: self.method.clone(),
+            headers, body: Some(self.body_area.lines().join("\n")),
         };
         if self.collections.save_request(&new_req).is_ok() {
             let _ = self.collections.load_all();
@@ -302,6 +295,13 @@ impl<'a> App<'a> {
             let parts: Vec<&str> = line.splitn(2, ':').collect();
             if parts.len() == 2 { h_map.insert(parts[0].trim().to_string(), parts[1].trim().to_string()); }
         }
+
+        let hist_req = ApiRequest {
+            name: url.clone(), url: url.clone(), method: method_str.clone(),
+            headers: h_map.clone(), body: Some(body_content.clone()),
+        };
+        self.collections.add_to_history(hist_req);
+
         tokio::spawn(async move {
             let client = reqwest::Client::builder().timeout(Duration::from_secs(10)).build().unwrap();
             let method = match method_str.as_str() {
@@ -315,7 +315,7 @@ impl<'a> App<'a> {
             match rb.header("User-Agent", "Arthema").send().await {
                 Ok(resp) => {
                     let status = resp.status();
-                    let text = resp.text().await.unwrap_or_else(|_| "ERR".to_string());
+                    let text = resp.text().await.unwrap_or_else(|_| "CORRUPTION".to_string());
                     let formatted = if let Ok(val) = serde_json::from_str::<serde_json::Value>(&text) {
                         serde_json::to_string_pretty(&val).unwrap_or(text)
                     } else { text };
@@ -327,6 +327,8 @@ impl<'a> App<'a> {
     }
 
     pub fn trigger_ai_suggestion(&mut self) {
+        if self.is_ai_loading { return; }
+        self.is_ai_loading = true;
         let tx = self.tx.clone();
         let url = self.url_area.lines()[0].clone();
         self.ai_response = "AI: CALCULATING...".to_string();
@@ -337,6 +339,8 @@ impl<'a> App<'a> {
     }
 
     pub fn trigger_ai_explain(&mut self) {
+        if self.is_ai_loading { return; }
+        self.is_ai_loading = true;
         let tx = self.tx.clone();
         let r = self.response.clone();
         self.ai_response = "AI: ANALYZING...".to_string();
@@ -346,15 +350,44 @@ impl<'a> App<'a> {
         });
     }
 
+    pub fn trigger_ai_fix(&mut self) {
+        if self.is_ai_loading { return; }
+        self.is_ai_loading = true;
+        let tx = self.tx.clone();
+        let method = self.method.clone();
+        let url = self.url_area.lines()[0].clone();
+        let headers = self.headers_area.lines().join("\n");
+        let body = self.body_area.lines().join("\n");
+        let error = self.response.clone();
+        
+        self.ai_response = "AI FIXER: DIAGNOSING ERROR...".to_string();
+        tokio::spawn(async move {
+            let e = crate::ai::fix_error(&method, &url, &headers, &body, &error).await;
+            let _ = tx.send(format!("AI_EXPLANATION:{}", e));
+        });
+    }
+
     pub fn update(&mut self) {
         while let Ok(res) = self.rx.try_recv() {
+            self.is_ai_loading = false;
             if let Some(s) = res.strip_prefix("AI_SUGGESTION:") {
-                self.url_area = TextArea::default();
-                self.url_area.insert_str(s.trim());
-                self.ai_response = "AI: Suggested route loaded.".to_string();
+                self.url_area = TextArea::default(); self.url_area.insert_str(s.trim());
+                self.ai_response = "AI: Suggestion loaded.".to_string();
             } else if let Some(e) = res.strip_prefix("AI_EXPLANATION:") {
                 self.ai_response = e.to_string();
             } else { self.response = res; }
         }
+    }
+
+    fn select_all_active(&mut self) {
+        let area = match self.editor_focus {
+            EditorFocus::Url => &mut self.url_area,
+            EditorFocus::Headers => &mut self.headers_area,
+            EditorFocus::Body => &mut self.body_area,
+        };
+        area.move_cursor(CursorMove::Top);
+        area.start_selection();
+        area.move_cursor(CursorMove::Bottom);
+        area.move_cursor(CursorMove::End);
     }
 }
