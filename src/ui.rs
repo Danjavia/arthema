@@ -1,6 +1,7 @@
 use ratatui::{
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Constraint, Direction, Layout, Alignment},
     style::{Color, Modifier, Style},
+    text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Wrap, List, ListItem, Tabs},
     Frame,
 };
@@ -34,7 +35,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         ])
         .split(chunks[1]);
 
-    // 1. Panel Izquierdo (Tabs: Collections / History)
+    // 1. Panel Izquierdo
     let left_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(3), Constraint::Min(0)])
@@ -106,8 +107,34 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     f.render_widget(Paragraph::new(app.ai_response.as_str()).style(Style::default().fg(Color::Magenta)).block(Block::default().title(" 🧠 AI AGENT ").borders(Borders::ALL).border_style(get_border_style(&app.active_panel, ActivePanel::AI))).wrap(Wrap { trim: true }), right_chunks[1]);
 
     // Footer
-    let footer_text = " [H] History/Coll | [F] Focus | [I] Insert | [C] Copy | [S] Save | [Enter] Run ";
-    f.render_widget(Paragraph::new(footer_text).style(Style::default().fg(Color::DarkGray)).block(Block::default().borders(Borders::TOP).border_style(Style::default().fg(Color::Magenta))), chunks[2]);
+    let footer_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Min(0),
+            Constraint::Length(70),
+        ])
+        .split(chunks[2]);
+
+    let footer_text = " [H] History | [F] Focus | [I] Insert | [C] Copy | [S] Save ";
+    f.render_widget(Paragraph::new(footer_text).style(Style::default().fg(Color::DarkGray)).block(Block::default().borders(Borders::TOP).border_style(Style::default().fg(Color::Magenta))), footer_chunks[0]);
+
+    // Dashboard de Sistema alineado a la derecha
+    let sys_metrics = Line::from(vec![
+        Span::styled(format!(" ⚡ BAT: {} ", app.battery_level), Style::default().fg(Color::Cyan)),
+        Span::styled("|", Style::default().fg(Color::DarkGray)),
+        Span::styled(format!(" CPU: {:.1}% ", app.cpu_usage), Style::default().fg(Color::Cyan)),
+        Span::styled("|", Style::default().fg(Color::DarkGray)),
+        Span::styled(format!(" MEM: {}MB ", app.mem_used), Style::default().fg(Color::Cyan)),
+        Span::styled("|", Style::default().fg(Color::DarkGray)),
+        Span::styled(format!(" APP: {:.1}% {}MB ", app.proc_cpu, app.proc_mem), Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
+    ]);
+
+    f.render_widget(
+        Paragraph::new(sys_metrics)
+            .alignment(Alignment::Right)
+            .block(Block::default().borders(Borders::TOP).border_style(Style::default().fg(Color::Magenta))), 
+        footer_chunks[1]
+    );
 }
 
 fn configure_cursor(app: &mut App, focus: EditorFocus) {

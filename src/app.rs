@@ -7,8 +7,8 @@ use reqwest::Method;
 use tui_textarea::{TextArea, CursorMove};
 use std::process::{Command, Stdio};
 use std::io::Write;
-use std::fs;
 use ratatui::layout::Rect;
+use sysinfo::{System, Pid};
 
 pub enum ActivePanel {
     Collections,
@@ -50,6 +50,15 @@ pub struct App<'a> {
     pub url_rect: Rect,
     pub headers_rect: Rect,
     pub body_rect: Rect,
+    // Métricas de sistema
+    pub sys: System,
+    pub cpu_usage: f32,
+    pub mem_total: u64,
+    pub mem_used: u64,
+    pub proc_cpu: f32,
+    pub proc_mem: u64,
+    pub battery_level: String,
+    pub last_sys_update: Instant,
 }
 
 impl<'a> App<'a> {
@@ -63,13 +72,16 @@ impl<'a> App<'a> {
         let mut body_area = TextArea::default();
         body_area.insert_str("{\n  \"title\": \"foo\",\n  \"body\": \"bar\",\n  \"userId\": 1\n}");
 
+        let mut sys = System::new_all();
+        sys.refresh_all();
+
         App {
             url_area,
             headers_area,
             body_area,
             method: "GET".to_string(),
             response: "".to_string(),
-            ai_response: "ARTHEMA NEURAL LINK READY".to_string(),
+            ai_response: "ARTHEMA SYSTEM READY".to_string(),
             active_panel: ActivePanel::Editor,
             editor_focus: EditorFocus::Url,
             left_panel_tab: LeftPanelTab::Collections,
@@ -84,6 +96,14 @@ impl<'a> App<'a> {
             url_rect: Rect::default(),
             headers_rect: Rect::default(),
             body_rect: Rect::default(),
+            sys,
+            cpu_usage: 0.0,
+            mem_total: 0,
+            mem_used: 0,
+            proc_cpu: 0.0,
+            proc_mem: 0,
+            battery_level: "N/A".to_string(),
+            last_sys_update: Instant::now(),
         }
     }
 
@@ -377,6 +397,34 @@ impl<'a> App<'a> {
                 self.ai_response = e.to_string();
             } else { self.response = res; }
         }
+
+        if self.last_sys_update.elapsed() > Duration::from_secs(2) {
+            self.sys.refresh_cpu();
+            self.sys.refresh_memory();
+            
+            self.cpu_usage = self.sys.global_cpu_info().cpu_usage();
+            self.mem_total = self.sys.total_memory() / 1024 / 1024;
+            self.mem_used = self.sys.used_memory() / 1024 / 1024;
+
+            let pid = Pid::from_u32(std::process::id());
+            self.sys.refresh_process(pid);
+            if let Some(proc) = self.sys.process(pid) {
+                let num_cpus = self.sys.cpus().len() as f32;
+                self.proc_cpu = proc.cpu_usage() / num_cpus;
+                self.proc_mem = proc.memory() / 1024 / 1024;
+            }
+
+            if let Ok(output) = Command::new("pmset").arg("-g").arg("batt").output() {
+                let out = String::from_utf8_lossy(&output.stdout);
+                if let Some(line) = out.lines().nth(1) {
+                    if let Some(perc) = line.split('\t').nth(1) {
+                        self.battery_level = perc.split(';').next().unwrap_or("N/A").to_string();
+                    }
+                }
+            }
+
+            self.last_sys_update = Instant::now();
+        }
     }
 
     fn select_all_active(&mut self) {
@@ -385,9 +433,9 @@ impl<'a> App<'a> {
             EditorFocus::Headers => &mut self.headers_area,
             EditorFocus::Body => &mut self.body_area,
         };
-        area.move_cursor(CursorMove::Top);
+        area.move_cursor(tui_textarea::CursorMove::Top);
         area.start_selection();
-        area.move_cursor(CursorMove::Bottom);
-        area.move_cursor(CursorMove::End);
+        area.move_cursor(tui_textarea::CursorMove::Bottom);
+        area.move_cursor(tui_textarea::CursorMove::End);
     }
 }
