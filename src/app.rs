@@ -98,9 +98,9 @@ impl<'a> App<'a> {
         sys.refresh_all();
 
         App {
-            tabs: vec![RequestTab::new("Request 1".to_string())],
+            tabs: vec![RequestTab::new("Req 1".to_string())],
             active_tab: 0,
-            ai_response: "ARTHEMA SYSTEM READY\n\nROADMAP:\n- GraphQL Support\n- Env Vars".to_string(),
+            ai_response: "ARTHEMA SYSTEM READY".to_string(),
             active_panel: ActivePanel::Editor,
             left_panel_tab: LeftPanelTab::Collections,
             input_mode: false,
@@ -133,28 +133,24 @@ impl<'a> App<'a> {
 
         if let MouseEventKind::Down(_) = mouse.kind {
             if self.url_rect.contains(ratatui::layout::Position { x, y }) {
-                self.active_panel = ActivePanel::Editor;
-                self.current_tab_mut().editor_focus = EditorFocus::Url;
+                self.active_panel = ActivePanel::Editor; self.current_tab_mut().editor_focus = EditorFocus::Url;
                 self.input_mode = true;
-                let rx = x.saturating_sub(self.url_rect.x + 1);
-                let ry = y.saturating_sub(self.url_rect.y + 1);
+                let rx = x.saturating_sub(self.url_rect.x + 1); let ry = y.saturating_sub(self.url_rect.y + 1);
                 self.current_tab_mut().url_area.move_cursor(CursorMove::Jump(ry, rx));
             } else if self.headers_rect.contains(ratatui::layout::Position { x, y }) {
-                self.active_panel = ActivePanel::Editor;
-                self.current_tab_mut().editor_focus = EditorFocus::Headers;
+                self.active_panel = ActivePanel::Editor; self.current_tab_mut().editor_focus = EditorFocus::Headers;
                 self.input_mode = true;
-                let rx = x.saturating_sub(self.headers_rect.x + 1);
-                let ry = y.saturating_sub(self.headers_rect.y + 1);
+                let rx = x.saturating_sub(self.headers_rect.x + 1); let ry = y.saturating_sub(self.headers_rect.y + 1);
                 self.current_tab_mut().headers_area.move_cursor(CursorMove::Jump(ry, rx));
             } else if self.body_rect.contains(ratatui::layout::Position { x, y }) {
-                self.active_panel = ActivePanel::Editor;
-                self.current_tab_mut().editor_focus = EditorFocus::Body;
+                self.active_panel = ActivePanel::Editor; self.current_tab_mut().editor_focus = EditorFocus::Body;
                 self.input_mode = true;
-                let rx = x.saturating_sub(self.body_rect.x + 1);
-                let ry = y.saturating_sub(self.body_rect.y + 1);
+                let rx = x.saturating_sub(self.body_rect.x + 1); let ry = y.saturating_sub(self.body_rect.y + 1);
                 self.current_tab_mut().body_area.move_cursor(CursorMove::Jump(ry, rx));
             } else if x < self.url_rect.x {
                 self.active_panel = ActivePanel::Collections;
+            } else if x > (self.url_rect.x + self.url_rect.width) {
+                self.active_panel = ActivePanel::Response;
             }
         }
     }
@@ -173,6 +169,14 @@ impl<'a> App<'a> {
 
         if self.input_mode {
             if key.code == KeyCode::Esc { self.input_mode = false; return; }
+            
+            // Especial: Enter en URL ejecuta
+            if key.code == KeyCode::Enter && self.current_tab().editor_focus == EditorFocus::Url {
+                self.input_mode = false;
+                self.send_request();
+                return;
+            }
+
             let tab = self.current_tab_mut();
             match tab.editor_focus {
                 EditorFocus::Url => { tab.url_area.input(key); }
@@ -192,6 +196,7 @@ impl<'a> App<'a> {
             KeyCode::Char('e') => self.trigger_ai_explain(),
             KeyCode::Char('x') => self.trigger_ai_fix(),
             KeyCode::Char('s') => self.save_current_request(),
+            KeyCode::Char('c') => self.copy_to_system(), // Tecla 'c' para copiar
             KeyCode::Char('n') => self.next_tab(),
             KeyCode::Enter => {
                 if matches!(self.active_panel, ActivePanel::Collections) { self.load_selected_item(); }
@@ -214,17 +219,11 @@ impl<'a> App<'a> {
 
     fn new_tab(&mut self) {
         let id = self.tabs.len() + 1;
-        self.tabs.push(RequestTab::new(format!("Request {}", id)));
+        self.tabs.push(RequestTab::new(format!("Req {}", id)));
         self.active_tab = self.tabs.len() - 1;
     }
 
-    fn close_tab(&mut self) {
-        if self.tabs.len() > 1 {
-            self.tabs.remove(self.active_tab);
-            self.active_tab = self.active_tab.saturating_sub(1);
-        }
-    }
-
+    fn close_tab(&mut self) { if self.tabs.len() > 1 { self.tabs.remove(self.active_tab); self.active_tab = self.active_tab.saturating_sub(1); } }
     fn next_tab(&mut self) { self.active_tab = (self.active_tab + 1) % self.tabs.len(); }
 
     fn undo_active(&mut self) {
@@ -237,17 +236,17 @@ impl<'a> App<'a> {
     }
 
     fn copy_to_system(&mut self) {
-        let tab = self.current_tab();
         let text = match self.active_panel {
             ActivePanel::Editor => {
-                let area = match tab.editor_focus {
-                    EditorFocus::Url => &tab.url_area,
-                    EditorFocus::Headers => &tab.headers_area,
-                    EditorFocus::Body => &tab.body_area,
-                };
+                let tab = self.current_tab();
+                let area = match tab.editor_focus { EditorFocus::Url => &tab.url_area, EditorFocus::Headers => &tab.headers_area, EditorFocus::Body => &tab.body_area };
                 area.lines().join("\n")
             },
-            ActivePanel::Response => tab.response.clone(),
+            ActivePanel::Response => {
+                let res = self.current_tab().response.clone();
+                if let Some(pos) = res.find("\n\n") { res[pos+2..].to_string() } else { res }
+            },
+            ActivePanel::AI => self.ai_response.clone(),
             _ => "".to_string(),
         };
         if text.is_empty() { return; }
@@ -255,7 +254,7 @@ impl<'a> App<'a> {
             if let Some(mut stdin) = child.stdin.take() { let _ = stdin.write_all(text.as_bytes()); }
             let _ = child.wait(); Ok(())
         });
-        self.ai_response = "SYSTEM: Copied to clipboard.".to_string();
+        self.ai_response = format!("SYSTEM: Copied {} chars to clipboard.", text.len());
     }
 
     fn paste_from_pbpaste(&mut self) {
@@ -300,8 +299,8 @@ impl<'a> App<'a> {
             }
             ActivePanel::Response => {
                 let tab = self.current_tab_mut();
-                if delta > 0 { tab.response_scroll += 1; }
-                else if tab.response_scroll > 0 { tab.response_scroll -= 1; }
+                if delta > 0 { tab.response_scroll = tab.response_scroll.saturating_add(1); }
+                else { tab.response_scroll = tab.response_scroll.saturating_sub(1); }
             }
             _ => {}
         }
@@ -312,7 +311,6 @@ impl<'a> App<'a> {
             LeftPanelTab::Collections => self.collections.requests.get(self.selected_idx).cloned(),
             LeftPanelTab::History => self.collections.history.get(self.selected_idx).cloned(),
         };
-
         if let Some(req) = req_clone {
             let tab = self.current_tab_mut();
             tab.url_area = TextArea::default(); tab.url_area.insert_str(&req.url);
@@ -335,13 +333,12 @@ impl<'a> App<'a> {
     }
 
     fn save_current_request(&mut self) {
-        let (_name, url, method, headers_vec, body) = {
+        let (name, url, method, h_lines, body) = {
             let tab = self.current_tab();
-            let h = tab.headers_area.lines().iter().map(|s| s.to_string()).collect::<Vec<_>>();
-            (tab.name.clone(), tab.url_area.lines()[0].clone(), tab.method.clone(), h, tab.body_area.lines().join("\n"))
+            (tab.name.clone(), tab.url_area.lines()[0].clone(), tab.method.clone(), tab.headers_area.lines().iter().map(|s| s.to_string()).collect::<Vec<_>>(), tab.body_area.lines().join("\n"))
         };
         let mut headers = HashMap::new();
-        for line in headers_vec {
+        for line in h_lines {
             let parts: Vec<&str> = line.splitn(2, ':').collect();
             if parts.len() == 2 { headers.insert(parts[0].trim().to_string(), parts[1].trim().to_string()); }
         }
@@ -354,6 +351,7 @@ impl<'a> App<'a> {
         let (url, method_str, body_content, h_lines) = {
             let tab = self.current_tab_mut();
             tab.response = "SYNCING...".to_string();
+            tab.response_scroll = 0;
             (tab.url_area.lines()[0].clone(), tab.method.clone(), tab.body_area.lines().join("\n"), tab.headers_area.lines().iter().map(|s| s.to_string()).collect::<Vec<_>>())
         };
         let mut h_map = HashMap::new();
@@ -388,7 +386,10 @@ impl<'a> App<'a> {
         let tx = self.tx.clone();
         let url = self.current_tab().url_area.lines()[0].clone();
         self.ai_response = "AI: CALCULATING...".to_string();
-        tokio::spawn(async move { let s = crate::ai::get_ai_suggestion(&url).await; let _ = tx.send(format!("AI_SUGGESTION:{}", s)); });
+        tokio::spawn(async move {
+            let s = crate::ai::get_ai_suggestion(&url).await;
+            let _ = tx.send(format!("AI_SUGGESTION:{}", s));
+        });
     }
 
     pub fn trigger_ai_explain(&mut self) {
@@ -397,7 +398,10 @@ impl<'a> App<'a> {
         let tx = self.tx.clone();
         let r = self.current_tab().response.clone();
         self.ai_response = "AI: ANALYZING...".to_string();
-        tokio::spawn(async move { let e = crate::ai::explain_response(&r).await; let _ = tx.send(format!("AI_EXPLANATION:{}", e)); });
+        tokio::spawn(async move {
+            let e = crate::ai::explain_response(&r).await;
+            let _ = tx.send(format!("AI_EXPLANATION:{}", e));
+        });
     }
 
     pub fn trigger_ai_fix(&mut self) {
@@ -407,7 +411,10 @@ impl<'a> App<'a> {
         let tx = self.tx.clone();
         let (m, u, h, b, e) = (tab.method.clone(), tab.url_area.lines()[0].clone(), tab.headers_area.lines().join("\n"), tab.body_area.lines().join("\n"), tab.response.clone());
         self.ai_response = "AI FIXER: DIAGNOSING...".to_string();
-        tokio::spawn(async move { let e = crate::ai::fix_error(&m, &u, &h, &b, &e).await; let _ = tx.send(format!("AI_EXPLANATION:{}", e)); });
+        tokio::spawn(async move {
+            let e = crate::ai::fix_error(&m, &u, &h, &b, &e).await;
+            let _ = tx.send(format!("AI_EXPLANATION:{}", e));
+        });
     }
 
     pub fn update(&mut self) {
@@ -417,9 +424,11 @@ impl<'a> App<'a> {
                 let tab = self.current_tab_mut();
                 tab.url_area = TextArea::default(); tab.url_area.insert_str(s.trim());
                 self.ai_response = "AI: Suggested route loaded.".to_string();
-            } else if let Some(e) = res.strip_prefix("AI_EXPLANATION:") { self.ai_response = e.to_string(); }
-            else { self.current_tab_mut().response = res; }
+            } else if let Some(e) = res.strip_prefix("AI_EXPLANATION:") {
+                self.ai_response = e.to_string();
+            } else { self.current_tab_mut().response = res; }
         }
+
         if self.last_sys_update.elapsed() > Duration::from_secs(2) {
             self.sys.refresh_cpu(); self.sys.refresh_memory();
             self.cpu_usage = self.sys.global_cpu_info().cpu_usage();
@@ -434,7 +443,11 @@ impl<'a> App<'a> {
             }
             if let Ok(output) = Command::new("pmset").arg("-g").arg("batt").output() {
                 let out = String::from_utf8_lossy(&output.stdout);
-                if let Some(line) = out.lines().nth(1) { if let Some(perc) = line.split('\t').nth(1) { self.battery_level = perc.split(';').next().unwrap_or("N/A").to_string(); } }
+                if let Some(line) = out.lines().nth(1) {
+                    if let Some(perc) = line.split('\t').nth(1) {
+                        self.battery_level = perc.split(';').next().unwrap_or("N/A").to_string();
+                    }
+                }
             }
             self.last_sys_update = Instant::now();
         }

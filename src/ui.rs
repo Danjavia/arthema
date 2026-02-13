@@ -1,7 +1,7 @@
 use ratatui::{
     layout::{Constraint, Direction, Layout, Alignment},
     style::{Color, Modifier, Style},
-    text::{Line, Span},
+    text::{Line, Span, Text},
     widgets::{Block, Borders, Paragraph, Wrap, List, ListItem, Tabs},
     Frame,
 };
@@ -134,7 +134,16 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
         .split(main_chunks[2]);
 
-    f.render_widget(Paragraph::new(tab.response.as_str()).block(Block::default().title(" 📡 RESPONSE ").borders(Borders::ALL).border_style(get_border_style(active_panel, ActivePanel::Response))).scroll((tab.response_scroll, 0)).wrap(Wrap { trim: true }), right_chunks[0]);
+    let response_text = highlight_json(&tab.response);
+    
+    f.render_widget(
+        Paragraph::new(response_text)
+            .block(Block::default().title(" 📡 RESPONSE ").borders(Borders::ALL).border_style(get_border_style(active_panel, ActivePanel::Response)))
+            .scroll((tab.response_scroll, 0))
+            .wrap(Wrap { trim: false }), 
+        right_chunks[0]
+    );
+
     f.render_widget(Paragraph::new(app.ai_response.as_str()).style(Style::default().fg(Color::Magenta)).block(Block::default().title(" 🧠 AI AGENT ").borders(Borders::ALL).border_style(get_border_style(active_panel, ActivePanel::AI))).wrap(Wrap { trim: true }), right_chunks[1]);
 
     // Footer
@@ -143,7 +152,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         .constraints([Constraint::Min(0), Constraint::Length(70)])
         .split(chunks[2]);
 
-    let footer_text = " [Ctrl+T] New | [Ctrl+W] Close | [N] Next | [M/Shift+M] Method ";
+    let footer_text = " [H] History | [F] Focus | [I] Insert | [C] Copy | [S] Save ";
     f.render_widget(Paragraph::new(footer_text).style(Style::default().fg(Color::DarkGray)).block(Block::default().borders(Borders::TOP).border_style(Style::default().fg(Color::Magenta))), footer_chunks[0]);
 
     let sys_metrics = Line::from(vec![
@@ -156,6 +165,28 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         Span::styled(format!(" APP: {:.1}% {}MB ", app.proc_cpu, app.proc_mem), Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
     ]);
     f.render_widget(Paragraph::new(sys_metrics).alignment(Alignment::Right).block(Block::default().borders(Borders::TOP).border_style(Style::default().fg(Color::Magenta))), footer_chunks[1]);
+}
+
+fn highlight_json(text: &str) -> Text {
+    let mut lines = Vec::new();
+    for line in text.lines() {
+        let mut spans = Vec::new();
+        if line.contains("STATUS:") {
+            spans.push(Span::styled(line, Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)));
+        } else if line.trim().starts_with('\"') && line.contains(':') {
+            // Es una clave JSON
+            let parts: Vec<&str> = line.splitn(2, ':').collect();
+            spans.push(Span::styled(parts[0], Style::default().fg(Color::LightBlue)));
+            spans.push(Span::styled(":", Style::default().fg(Color::White)));
+            if parts.len() > 1 {
+                spans.push(Span::styled(parts[1], Style::default().fg(Color::Yellow)));
+            }
+        } else {
+            spans.push(Span::styled(line, Style::default().fg(Color::Gray)));
+        }
+        lines.push(Line::from(spans));
+    }
+    Text::from(lines)
 }
 
 fn get_editor_border(active_panel: ActivePanel, current_focus: EditorFocus, target_focus: EditorFocus) -> Style {
