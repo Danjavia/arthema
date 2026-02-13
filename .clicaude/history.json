@@ -1,1 +1,12 @@
-[]
+[
+  {
+    "name": "https://jsonplaceholder.typicode.com/posts",
+    "url": "https://jsonplaceholder.typicode.com/posts",
+    "method": "GET",
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": "{\n  \"title\": \"Arthema Request\"\n}",
+    "group": null
+  }
+]

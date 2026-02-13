@@ -234,7 +234,7 @@ impl<'a> App<'a> {
                 EditorFocus::Body => { tab.body_area.input(key); }
                 _ => {}
             }
-            return;
+            return; // BLOQUEO DEFINITIVO: Si estamos en modo input, no se procesa nada más
         }
         match key.code {
             KeyCode::Char('i') => self.input_mode = true,

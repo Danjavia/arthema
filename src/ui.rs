@@ -33,11 +33,30 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     f.render_widget(Tabs::new(titles).block(Block::default().borders(Borders::ALL).border_style(get_border_style(app.active_panel, ActivePanel::Collections))).select(sel_idx).style(Style::default().fg(Color::Cyan)).highlight_style(Style::default().fg(Color::Black).bg(Color::Magenta)), left_chunks[0]);
 
     let items: Vec<ListItem> = match app.left_panel_tab {
-        crate::app::LeftPanelTab::Collections => app.collections.requests.iter().enumerate().map(|(i, r)| {
-            let style = if i == app.selected_idx && matches!(app.active_panel, ActivePanel::Collections) { Style::default().fg(Color::Black).bg(Color::Cyan) } else { Style::default().fg(Color::Green) };
-            let prefix = r.group.as_ref().map(|g| format!("[{}] ", g)).unwrap_or_default();
-            ListItem::new(format!(" > {}{}", prefix, r.name)).style(style)
-        }).collect(),
+        crate::app::LeftPanelTab::Collections => {
+            let mut list_items = Vec::new();
+            let mut current_group = String::new();
+            
+            // Ordenamos por grupo para la visualización
+            let mut sorted_reqs = app.collections.requests.clone();
+            sorted_reqs.sort_by(|a, b| a.group.cmp(&b.group));
+
+            for (i, r) in sorted_reqs.iter().enumerate() {
+                let group_name = r.group.as_deref().unwrap_or("UNGROUPED");
+                if group_name != current_group {
+                    list_items.push(ListItem::new(format!("📁 {}", group_name)).style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
+                    current_group = group_name.to_string();
+                }
+                
+                let style = if i == app.selected_idx && matches!(app.active_panel, ActivePanel::Collections) { 
+                    Style::default().fg(Color::Black).bg(Color::Cyan) 
+                } else { 
+                    Style::default().fg(Color::Green) 
+                };
+                list_items.push(ListItem::new(format!("  └─ {}", r.name)).style(style));
+            }
+            list_items
+        },
         crate::app::LeftPanelTab::History => app.collections.history.iter().enumerate().map(|(i, r)| {
             let style = if i == app.selected_idx && matches!(app.active_panel, ActivePanel::Collections) { Style::default().fg(Color::Black).bg(Color::Cyan) } else { Style::default().fg(Color::DarkGray) };
             ListItem::new(format!(" [{}] {}", r.method, r.url)).style(style)
