@@ -6,6 +6,15 @@
     "headers": {
       "Content-Type": "application/json"
     },
+    "body": "{\n  \"title\": \"foo\",\n  \"body\": \"bar\"\n}"
+  },
+  {
+    "name": "https://jsonplaceholder.typicode.com/posts",
+    "url": "https://jsonplaceholder.typicode.com/posts",
+    "method": "GET",
+    "headers": {
+      "Content-Type": "application/json"
+    },
     "body": "{\n  \"title\": \"foo\",\n  \"body\": \"bar\",\n  \"userId\": 1\n}"
   },
   {
