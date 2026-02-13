@@ -1,6 +1,6 @@
 [package]
 name = "arthema"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2024"
 description = "A fast, lightweight, and futuristic Cyberpunk-themed API IDE"
 license = "MIT"
@@ -25,3 +25,5 @@ sysinfo = "0.30"
 shlex = "1.3"
 image = "0.24"
 base64 = "0.22"
+openapiv3 = "2.0"
+serde_yaml = "0.9"

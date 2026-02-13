@@ -1,6 +1,7 @@
 mod config;
 mod curl;
 mod img_preview;
+mod openapi;
 use anyhow::Result;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},

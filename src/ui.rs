@@ -35,7 +35,8 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     let items: Vec<ListItem> = match app.left_panel_tab {
         crate::app::LeftPanelTab::Collections => app.collections.requests.iter().enumerate().map(|(i, r)| {
             let style = if i == app.selected_idx && matches!(app.active_panel, ActivePanel::Collections) { Style::default().fg(Color::Black).bg(Color::Cyan) } else { Style::default().fg(Color::Green) };
-            ListItem::new(format!(" > {}", r.name)).style(style)
+            let prefix = r.group.as_ref().map(|g| format!("[{}] ", g)).unwrap_or_default();
+            ListItem::new(format!(" > {}{}", prefix, r.name)).style(style)
         }).collect(),
         crate::app::LeftPanelTab::History => app.collections.history.iter().enumerate().map(|(i, r)| {
             let style = if i == app.selected_idx && matches!(app.active_panel, ActivePanel::Collections) { Style::default().fg(Color::Black).bg(Color::Cyan) } else { Style::default().fg(Color::DarkGray) };
@@ -113,7 +114,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         .constraints([Constraint::Min(0), Constraint::Length(75)])
         .split(chunks[1]);
 
-    let footer_text = " [H] Hist | [N] Tab | [F] Foc | [I] Ins | [C] Copy | [^P] Curl | [O] Open | [K] API ";
+    let footer_text = " [H] Hist | [N] Tab | [F] Foc | [I] Ins | [^P] Curl | [G] Swagger | [O] Open | [K] API ";
     f.render_widget(Paragraph::new(footer_text).style(Style::default().fg(Color::DarkGray)).block(Block::default().borders(Borders::TOP).border_style(Style::default().fg(Color::Magenta))), footer_chunks[0]);
 
     // Dashboard de Sistema - ARTHEMA alineado a la derecha

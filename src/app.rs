@@ -63,6 +63,7 @@ pub enum AppEvent {
     ApiResponse(String, Option<Vec<u8>>),
     AiMessage(String),
     SystemMessage(String),
+    SwaggerImported(Vec<ApiRequest>),
 }
 
 pub struct App<'a> {
@@ -79,6 +80,8 @@ pub struct App<'a> {
     pub config: crate::config::Config,
     pub key_input: TextArea<'a>,
     pub show_key_input: bool,
+    pub swagger_input: TextArea<'a>,
+    pub show_swagger_input: bool,
     pub selected_idx: usize,
     pub url_rect: Rect, pub headers_rect: Rect, pub body_rect: Rect, pub attach_rect: Rect,
     pub show_file_picker: bool,
@@ -101,6 +104,8 @@ impl<'a> App<'a> {
             config: crate::config::Config::load(),
             key_input: TextArea::default(),
             show_key_input: false,
+            swagger_input: TextArea::default(),
+            show_swagger_input: false,
             selected_idx: 0,
             url_rect: Rect::default(), headers_rect: Rect::default(), body_rect: Rect::default(), attach_rect: Rect::default(),
             show_file_picker: false, current_dir: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")), file_entries: Vec::new(), file_picker_state: ListState::default(),
@@ -139,6 +144,14 @@ impl<'a> App<'a> {
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) {
+        if self.show_swagger_input {
+            match key.code {
+                KeyCode::Esc => self.show_swagger_input = false,
+                KeyCode::Enter => self.import_swagger(),
+                _ => { self.swagger_input.input(key); }
+            }
+            return;
+        }
         if self.show_key_input {
             match key.code {
                 KeyCode::Esc => self.show_key_input = false,
@@ -215,6 +228,11 @@ impl<'a> App<'a> {
                 self.show_key_input = true; 
                 self.key_input = TextArea::default();
                 if let Some(key) = &self.config.gemini_api_key { self.key_input.insert_str(key); }
+            },
+            KeyCode::Char('g') => {
+                self.show_swagger_input = true;
+                self.swagger_input = TextArea::default();
+                self.swagger_input.insert_str("https://petstore.swagger.io/v2/swagger.json");
             },
             KeyCode::Char('a') => self.trigger_ai_suggestion(),
             KeyCode::Char('e') => self.trigger_ai_explain(),
@@ -381,15 +399,44 @@ impl<'a> App<'a> {
 
     
 
-        pub fn next_panel(&mut self) {
+        fn import_swagger(&mut self) {
+        let url = self.swagger_input.lines()[0].trim().to_string();
+        if url.is_empty() { return; }
+        
+        let tx = self.tx.clone();
+        self.ai_response = "SYSTEM: Importing Swagger/OpenAPI spec...".to_string();
+        
+        tokio::spawn(async move {
+            let client = reqwest::Client::new();
+            match client.get(&url).send().await {
+                Ok(resp) => {
+                    if let Ok(content) = resp.text().await {
+                        let requests = crate::openapi::parse_swagger(&content);
+                        let _ = tx.send(AppEvent::SwaggerImported(requests));
+                    }
+                }
+                Err(e) => { let _ = tx.send(AppEvent::SystemMessage(format!("SWAGGER ERROR: {}", e))); }
+            }
+        });
+        self.show_swagger_input = false;
+    }
 
-     self.active_panel = match self.active_panel { ActivePanel::Collections => ActivePanel::Editor, ActivePanel::Editor => ActivePanel::Response, ActivePanel::Response => ActivePanel::AI, _ => ActivePanel::Collections }; }
+    pub fn next_panel(&mut self) {
+        self.active_panel = match self.active_panel { ActivePanel::Collections => ActivePanel::Editor, ActivePanel::Editor => ActivePanel::Response, ActivePanel::Response => ActivePanel::AI, _ => ActivePanel::Collections };
+    }
 
     fn save_current_request(&mut self) {
         let t = self.current_tab();
         let mut hs = HashMap::new();
         for l in t.headers_area.lines() { let pts: Vec<&str> = l.splitn(2, ':').collect(); if pts.len() == 2 { hs.insert(pts[0].trim().to_string(), pts[1].trim().to_string()); } }
-        let new_req = ApiRequest { name: format!("Req_{}", self.collections.requests.len() + 1), url: t.url_area.lines()[0].clone(), method: t.method.clone(), headers: hs, body: Some(t.body_area.lines().join("\n")) };
+        let new_req = ApiRequest { 
+            name: format!("Req_{}", self.collections.requests.len() + 1), 
+            url: t.url_area.lines()[0].clone(), 
+            method: t.method.clone(), 
+            headers: hs, 
+            body: Some(t.body_area.lines().join("\n")),
+            group: None 
+        };
         if self.collections.save_request(&new_req).is_ok() { let _ = self.collections.load_all(); self.ai_response = "SYSTEM: saved.".to_string(); }
     }
 
@@ -401,7 +448,14 @@ impl<'a> App<'a> {
         };
         let mut h_map = HashMap::new();
         for l in h_lines { let p: Vec<&str> = l.splitn(2, ':').collect(); if p.len() == 2 { h_map.insert(p[0].trim().to_string(), p[1].trim().to_string()); } }
-        self.collections.add_to_history(ApiRequest { name: url.clone(), url: url.clone(), method: m_str.clone(), headers: h_map.clone(), body: Some(body.clone()) });
+        self.collections.add_to_history(ApiRequest { 
+            name: url.clone(), 
+            url: url.clone(), 
+            method: m_str.clone(), 
+            headers: h_map.clone(), 
+            body: Some(body.clone()),
+            group: None 
+        });
 
         tokio::spawn(async move {
             let client = reqwest::Client::builder().timeout(Duration::from_secs(15)).build().unwrap();
@@ -451,6 +505,14 @@ impl<'a> App<'a> {
                     } else if let Some(e) = res.strip_prefix("AI_EXPLANATION:") {
                         self.ai_response = e.to_string();
                     }
+                }
+                AppEvent::SwaggerImported(reqs) => {
+                    let count = reqs.len();
+                    for r in reqs {
+                        let _ = self.collections.save_request(&r);
+                    }
+                    let _ = self.collections.load_all();
+                    self.ai_response = format!("SYSTEM: Imported {} requests from Swagger.", count);
                 }
                 AppEvent::SystemMessage(msg) => {
                     self.current_tab_mut().response = msg;

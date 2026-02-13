@@ -11,6 +11,7 @@ pub struct ApiRequest {
     pub method: String,
     pub headers: HashMap<String, String>,
     pub body: Option<String>,
+    pub group: Option<String>,
 }
 
 pub struct CollectionManager {
