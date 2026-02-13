@@ -8,23 +8,20 @@ pub struct ParsedCurl {
 }
 
 pub fn parse_curl(curl: &str) -> Option<ParsedCurl> {
-    if !curl.trim().to_lowercase().starts_with("curl") {
+    let trimmed = curl.trim();
+    if !trimmed.to_lowercase().starts_with("curl") {
         return None;
     }
 
-    let mut method = "GET".to_string();
+    let mut method = String::new();
     let mut url = String::new();
     let mut headers = HashMap::new();
-    let mut body = String::new();
+    let mut body_parts = Vec::new();
     
-    // Unir líneas si el curl está multilínea con 
-    let cleaned_curl = curl.replace("
-", " ").replace("
-", " ");
+    // Limpiar saltos de línea y escapar caracteres de shell
+    let cleaned_curl = trimmed.replace("\\\n", " ").replace("\\\r\n", " ");
     
-    // Split por espacios pero respetando comillas (simplificado)
     let tokens = shlex::split(&cleaned_curl)?;
-    
     let mut iter = tokens.iter().peekable();
     iter.next(); // saltar "curl"
 
@@ -42,10 +39,10 @@ pub fn parse_curl(curl: &str) -> Option<ParsedCurl> {
                     }
                 }
             }
-            "-d" | "--data" | "--data-raw" | "--data-binary" => {
+            "-d" | "--data" | "--data-raw" | "--data-binary" | "--data-ascii" => {
                 if let Some(d) = iter.next() {
-                    body.push_str(d);
-                    if method == "GET" {
+                    body_parts.push(d.clone());
+                    if method.is_empty() {
                         method = "POST".to_string();
                     }
                 }
@@ -53,9 +50,15 @@ pub fn parse_curl(curl: &str) -> Option<ParsedCurl> {
             u if u.starts_with("http") => {
                 url = u.to_string();
             }
+            flag if flag.starts_with('-') => {
+                // Otras flags que no nos interesan por ahora
+                if !["-L", "--location", "-i", "--include", "-s", "--silent"].contains(&flag) {
+                    // Si es una flag que espera valor y no la conocemos, saltamos el siguiente
+                    // Pero por ahora, el parser simple de arriba cubre lo básico.
+                }
+            }
             _ => {
-                // Si no empieza con - y no es una flag conocida, podría ser la URL
-                if !token.starts_with('-') && url.is_empty() {
+                if url.is_empty() {
                     url = token.to_string();
                 }
             }
@@ -63,11 +66,12 @@ pub fn parse_curl(curl: &str) -> Option<ParsedCurl> {
     }
 
     if url.is_empty() { return None; }
+    if method.is_empty() { method = "GET".to_string(); }
 
     Some(ParsedCurl {
         method,
         url,
         headers,
-        body: if body.is_empty() { None } else { Some(body) },
+        body: if body_parts.is_empty() { None } else { Some(body_parts.join("")) },
     })
 }

@@ -8,7 +8,9 @@ Este documento detalla las próximas funcionalidades y hitos para convertir a **
 - [ ] **Binarios Pre-compilados:** Configurar GitHub Actions para generar binarios para Mac (Intel/Silicon) y Linux.
 
 ## 🛠 Funcionalidades Técnicas
-- [ ] **Importar cURL:** Pegar un comando `curl` y que el sistema lo analice y cargue automáticamente.
+- [ ] **Importar Swagger/OpenAPI:** Cargar especificaciones de API completas y generar colecciones organizadas por carpetas.
+- [ ] **Autocompletado Inteligente:** Soporte de headers y parámetros sugeridos basados en la definición de Swagger.
+- [x] **Importar cURL:** Pegar un comando `curl` y que el sistema lo analice (Mejorado).
 - [ ] **Variables de Entorno:** Gestión de entornos (Dev, Staging, Prod) mediante archivos `.env` o JSON.
 - [ ] **Scripts Pre/Post:** Ejecución de lógica personalizada antes o después de una petición (tipo Postman Scripts).
 - [ ] **JSON Tree Interactivo:** Motor de plegado/desplegado para objetos anidados en la respuesta.
