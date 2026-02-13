@@ -1,5 +1,26 @@
 [
   {
+    "name": "https://www.keycdn.com/img/example.jpg",
+    "url": "https://www.keycdn.com/img/example.jpg",
+    "method": "GET",
+    "headers": {},
+    "body": ""
+  },
+  {
+    "name": "https://www.keycdn.com/img/example.jpg",
+    "url": "https://www.keycdn.com/img/example.jpg",
+    "method": "GET",
+    "headers": {},
+    "body": ""
+  },
+  {
+    "name": "https://www.keycdn.com/img/example.jpg",
+    "url": "https://www.keycdn.com/img/example.jpg",
+    "method": "GET",
+    "headers": {},
+    "body": ""
+  },
+  {
     "name": "https://jsonplaceholder.typicode.com/posts",
     "url": "https://jsonplaceholder.typicode.com/posts",
     "method": "GET",

@@ -25,6 +25,11 @@ pub enum BodyType { Json, Text, Form }
 #[derive(Clone, Copy, PartialEq)]
 pub enum LeftPanelTab { Collections, History }
 
+pub enum ResponseData {
+    Text(String),
+    Binary(String, Vec<u8>), // Texto descriptivo + bytes
+}
+
 pub struct RequestTab<'a> {
     pub name: String,
     pub url_area: TextArea<'a>,
@@ -33,6 +38,7 @@ pub struct RequestTab<'a> {
     pub file_path: String,
     pub method: String,
     pub response: String,
+    pub response_bytes: Option<Vec<u8>>,
     pub editor_focus: EditorFocus,
     pub body_type: BodyType,
     pub response_scroll: u16,
@@ -47,10 +53,16 @@ impl<'a> RequestTab<'a> {
         Self {
             name, url_area, headers_area, body_area,
             file_path: "".to_string(), method: "GET".to_string(),
-            response: "".to_string(), editor_focus: EditorFocus::Url,
+            response: "".to_string(), response_bytes: None, editor_focus: EditorFocus::Url,
             body_type: BodyType::Json, response_scroll: 0, is_tree_mode: false,
         }
     }
+}
+
+pub enum AppEvent {
+    ApiResponse(String, Option<Vec<u8>>),
+    AiMessage(String),
+    SystemMessage(String),
 }
 
 pub struct App<'a> {
@@ -61,8 +73,8 @@ pub struct App<'a> {
     pub left_panel_tab: LeftPanelTab,
     pub input_mode: bool,
     pub is_ai_loading: bool,
-    pub tx: mpsc::Sender<String>,
-    pub rx: mpsc::Receiver<String>,
+    pub tx: mpsc::Sender<AppEvent>,
+    pub rx: mpsc::Receiver<AppEvent>,
     pub collections: CollectionManager,
     pub config: crate::config::Config,
     pub key_input: TextArea<'a>,
@@ -167,6 +179,7 @@ impl<'a> App<'a> {
             match key.code {
                 KeyCode::Char('c') => { self.copy_to_system(); return; }
                 KeyCode::Char('v') => { self.paste_from_pbpaste(); return; }
+                KeyCode::Char('p') => { self.import_curl(); return; }
                 KeyCode::Char('z') => { self.undo_active(); return; }
                 KeyCode::Char('t') => { self.new_tab(); return; }
                 KeyCode::Char('w') => { self.handle_delete(); return; } // Ctrl+W también borra pestaña
@@ -196,6 +209,7 @@ impl<'a> App<'a> {
             KeyCode::Char('f') => self.cycle_editor_focus(),
             KeyCode::Char('s') => self.save_current_request(),
             KeyCode::Char('n') => self.next_tab(),
+            KeyCode::Char('o') => self.open_in_system(),
             KeyCode::Char('c') => self.copy_to_system(),
             KeyCode::Char('k') => { 
                 self.show_key_input = true; 
@@ -290,6 +304,30 @@ impl<'a> App<'a> {
         }
     }
 
+    fn import_curl(&mut self) {
+        if let Ok(o) = Command::new("pbpaste").output() {
+            let t = String::from_utf8_lossy(&o.stdout).to_string();
+            if let Some(parsed) = crate::curl::parse_curl(&t) {
+                let tab = self.current_tab_mut();
+                tab.method = parsed.method;
+                tab.url_area = TextArea::default(); tab.url_area.insert_str(&parsed.url);
+                
+                let mut h_str = String::new();
+                for (k, v) in parsed.headers { h_str.push_str(&format!("{}: {}\n", k, v)); }
+                tab.headers_area = TextArea::default(); tab.headers_area.insert_str(h_str.trim());
+                
+                tab.body_area = TextArea::default();
+                if let Some(b) = parsed.body { 
+                    tab.body_area.insert_str(&b); 
+                    if b.starts_with('{') { tab.body_type = BodyType::Json; }
+                }
+                self.ai_response = "SYSTEM: cURL command imported successfully.".to_string();
+            } else {
+                self.ai_response = "SYSTEM ERROR: Clipboard does not contain a valid cURL command.".to_string();
+            }
+        }
+    }
+
     fn cycle_editor_focus(&mut self) { let tab = self.current_tab_mut(); tab.editor_focus = match tab.editor_focus { EditorFocus::Url => EditorFocus::Headers, EditorFocus::Headers => EditorFocus::Body, EditorFocus::Body => EditorFocus::Attachment, EditorFocus::Attachment => EditorFocus::Url }; }
     fn cycle_method(&mut self, fwd: bool) { let ms = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]; let c = self.current_tab().method.clone(); let p = ms.iter().position(|&m| m == c).unwrap_or(0) as i32; let n = if fwd { (p + 1).rem_euclid(ms.len() as i32) } else { (p - 1).rem_euclid(ms.len() as i32) }; self.current_tab_mut().method = ms[n as usize].to_string(); }
 
@@ -317,7 +355,35 @@ impl<'a> App<'a> {
         }
     }
 
-    pub fn next_panel(&mut self) { self.active_panel = match self.active_panel { ActivePanel::Collections => ActivePanel::Editor, ActivePanel::Editor => ActivePanel::Response, ActivePanel::Response => ActivePanel::AI, _ => ActivePanel::Collections }; }
+        fn open_in_system(&mut self) {
+
+            let tab = self.current_tab();
+
+            if let Some(bytes) = &tab.response_bytes {
+
+                let temp_path = std::env::temp_dir().join("arthema_resp.png");
+
+                if std::fs::write(&temp_path, bytes).is_ok() {
+
+                    let _ = Command::new("open").arg(&temp_path).spawn();
+
+                    self.ai_response = "SYSTEM: Opening image in default viewer...".to_string();
+
+                }
+
+            } else if !tab.file_path.is_empty() {
+
+                let _ = Command::new("open").arg(&tab.file_path).spawn();
+
+            }
+
+        }
+
+    
+
+        pub fn next_panel(&mut self) {
+
+     self.active_panel = match self.active_panel { ActivePanel::Collections => ActivePanel::Editor, ActivePanel::Editor => ActivePanel::Response, ActivePanel::Response => ActivePanel::AI, _ => ActivePanel::Collections }; }
 
     fn save_current_request(&mut self) {
         let t = self.current_tab();
@@ -330,7 +396,7 @@ impl<'a> App<'a> {
     pub fn send_request(&mut self) {
         let tx = self.tx.clone();
         let (url, m_str, body, h_lines, f_path) = {
-            let t = self.current_tab_mut(); t.response = "SYNCING...".to_string(); t.response_scroll = 0;
+            let t = self.current_tab_mut(); t.response = "SYNCING...".to_string(); t.response_bytes = None; t.response_scroll = 0;
             (t.url_area.lines()[0].clone(), t.method.clone(), t.body_area.lines().join("\n"), t.headers_area.lines().iter().map(|s| s.to_string()).collect::<Vec<_>>(), t.file_path.clone())
         };
         let mut h_map = HashMap::new();
@@ -338,29 +404,58 @@ impl<'a> App<'a> {
         self.collections.add_to_history(ApiRequest { name: url.clone(), url: url.clone(), method: m_str.clone(), headers: h_map.clone(), body: Some(body.clone()) });
 
         tokio::spawn(async move {
-            let client = reqwest::Client::builder().timeout(Duration::from_secs(10)).build().unwrap();
+            let client = reqwest::Client::builder().timeout(Duration::from_secs(15)).build().unwrap();
             let method = match m_str.as_str() { "POST" => Method::POST, "PUT" => Method::PUT, "DELETE" => Method::DELETE, "PATCH" => Method::PATCH, "HEAD" => Method::HEAD, "OPTIONS" => Method::OPTIONS, _ => Method::GET };
             let mut rb = client.request(method.clone(), &url);
             for (k, v) in h_map { rb = rb.header(k, v); }
             if !f_path.is_empty() { if let Ok(b) = std::fs::read(&f_path) { let form = reqwest::multipart::Form::new().part("file", reqwest::multipart::Part::bytes(b).file_name("upload")); rb = rb.multipart(form); } }
             else if !body.is_empty() && method != Method::GET { rb = rb.body(body); }
+            
             match rb.header("User-Agent", "Arthema").send().await {
-                Ok(resp) => { let s = resp.status(); let text = resp.text().await.unwrap_or_else(|_| "ERR".to_string()); let fmtd = if let Ok(val) = serde_json::from_str::<serde_json::Value>(&text) { serde_json::to_string_pretty(&val).unwrap_or(text) } else { text }; let _ = tx.send(format!("STATUS: {}\n\n{}", s, fmtd)); }
-                Err(e) => { let _ = tx.send(format!("ERROR: {}", e)); }
+                Ok(resp) => {
+                    let s = resp.status();
+                    let content_type = resp.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
+                    let bytes = resp.bytes().await.unwrap_or_default();
+                    
+                    if content_type.starts_with("image/") {
+                        let _ = tx.send(AppEvent::ApiResponse(format!("STATUS: {}\nTYPE: {}\nSIZE: {} bytes", s, content_type, bytes.len()), Some(bytes.to_vec())));
+                    } else {
+                        let text = String::from_utf8_lossy(&bytes).to_string();
+                        let fmtd = if let Ok(val) = serde_json::from_str::<serde_json::Value>(&text) { serde_json::to_string_pretty(&val).unwrap_or(text) } else { text };
+                        let _ = tx.send(AppEvent::ApiResponse(format!("STATUS: {}\n\n{}", s, fmtd), None));
+                    }
+                }
+                Err(e) => { let _ = tx.send(AppEvent::SystemMessage(format!("ERROR: {}", e))); }
             }
         });
     }
 
-    pub fn trigger_ai_suggestion(&mut self) { if !self.is_ai_loading { self.is_ai_loading = true; let tx = self.tx.clone(); let url = self.current_tab().url_area.lines()[0].clone(); let key = self.config.gemini_api_key.clone().unwrap_or_default(); tokio::spawn(async move { let s = crate::ai::get_ai_suggestion(&key, &url).await; let _ = tx.send(format!("AI_SUGGESTION:{}", s)); }); } }
-    pub fn trigger_ai_explain(&mut self) { if !self.is_ai_loading { self.is_ai_loading = true; let tx = self.tx.clone(); let r = self.current_tab().response.clone(); let key = self.config.gemini_api_key.clone().unwrap_or_default(); tokio::spawn(async move { let e = crate::ai::explain_response(&key, &r).await; let _ = tx.send(format!("AI_EXPLANATION:{}", e)); }); } }
-    pub fn trigger_ai_fix(&mut self) { if !self.is_ai_loading { self.is_ai_loading = true; let t = self.current_tab(); let tx = self.tx.clone(); let (m, u, h, b, e) = (t.method.clone(), t.url_area.lines()[0].clone(), t.headers_area.lines().join("\n"), t.body_area.lines().join("\n"), t.response.clone()); let key = self.config.gemini_api_key.clone().unwrap_or_default(); tokio::spawn(async move { let e = crate::ai::fix_error(&key, &m, &u, &h, &b, &e).await; let _ = tx.send(format!("AI_EXPLANATION:{}", e)); }); } }
+    pub fn trigger_ai_suggestion(&mut self) { if !self.is_ai_loading { self.is_ai_loading = true; let tx = self.tx.clone(); let url = self.current_tab().url_area.lines()[0].clone(); let key = self.config.gemini_api_key.clone().unwrap_or_default(); tokio::spawn(async move { let s = crate::ai::get_ai_suggestion(&key, &url).await; let _ = tx.send(AppEvent::AiMessage(format!("AI_SUGGESTION:{}", s))); }); } }
+    pub fn trigger_ai_explain(&mut self) { if !self.is_ai_loading { self.is_ai_loading = true; let tx = self.tx.clone(); let r = self.current_tab().response.clone(); let key = self.config.gemini_api_key.clone().unwrap_or_default(); tokio::spawn(async move { let e = crate::ai::explain_response(&key, &r).await; let _ = tx.send(AppEvent::AiMessage(format!("AI_EXPLANATION:{}", e))); }); } }
+    pub fn trigger_ai_fix(&mut self) { if !self.is_ai_loading { self.is_ai_loading = true; let t = self.current_tab(); let tx = self.tx.clone(); let (m, u, h, b, e) = (t.method.clone(), t.url_area.lines()[0].clone(), t.headers_area.lines().join("\n"), t.body_area.lines().join("\n"), t.response.clone()); let key = self.config.gemini_api_key.clone().unwrap_or_default(); tokio::spawn(async move { let e = crate::ai::fix_error(&key, &m, &u, &h, &b, &e).await; let _ = tx.send(AppEvent::AiMessage(format!("AI_EXPLANATION:{}", e))); }); } }
 
     pub fn update(&mut self) {
-        while let Ok(res) = self.rx.try_recv() {
+        while let Ok(event) = self.rx.try_recv() {
             self.is_ai_loading = false;
-            if let Some(s) = res.strip_prefix("AI_SUGGESTION:") { let t = self.current_tab_mut(); t.url_area = TextArea::default(); t.url_area.insert_str(s.trim()); }
-            else if let Some(e) = res.strip_prefix("AI_EXPLANATION:") { self.ai_response = e.to_string(); }
-            else { self.current_tab_mut().response = res; }
+            match event {
+                AppEvent::ApiResponse(text, bytes) => {
+                    let t = self.current_tab_mut();
+                    t.response = text;
+                    t.response_bytes = bytes;
+                }
+                AppEvent::AiMessage(res) => {
+                    if let Some(s) = res.strip_prefix("AI_SUGGESTION:") {
+                        let t = self.current_tab_mut();
+                        t.url_area = TextArea::default();
+                        t.url_area.insert_str(s.trim());
+                    } else if let Some(e) = res.strip_prefix("AI_EXPLANATION:") {
+                        self.ai_response = e.to_string();
+                    }
+                }
+                AppEvent::SystemMessage(msg) => {
+                    self.current_tab_mut().response = msg;
+                }
+            }
         }
         if self.last_sys_update.elapsed() > Duration::from_secs(2) {
             self.sys.refresh_cpu(); self.sys.refresh_memory();
