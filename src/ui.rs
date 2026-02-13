@@ -130,6 +130,14 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     f.render_widget(Paragraph::new(sys_metrics).alignment(Alignment::Right).block(Block::default().borders(Borders::TOP).border_style(Style::default().fg(Color::Magenta))), footer_chunks[1]);
 
     // MODAL: File Picker
+    if app.show_file_picker {
+        let area = centered_rect(60, 60, f.size());
+        f.render_widget(Clear, area);
+        let items: Vec<ListItem> = app.file_entries.iter().map(|fi| ListItem::new(fi.as_str()).style(Style::default().fg(Color::White))).collect();
+        let list = List::new(items).block(Block::default().title(" 📁 SELECT FILE ").borders(Borders::ALL).border_style(Style::default().fg(Color::Yellow))).highlight_style(Style::default().fg(Color::Black).bg(Color::Yellow)).highlight_symbol(">> ");
+        f.render_stateful_widget(list, area, &mut app.file_picker_state);
+    }
+
     // MODAL: API Key Input
     if app.show_key_input {
         let area = centered_rect(60, 20, f.size());
