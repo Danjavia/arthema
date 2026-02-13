@@ -114,7 +114,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         .constraints([Constraint::Min(0), Constraint::Length(75)])
         .split(chunks[1]);
 
-    let footer_text = " [H] Hist | [N] Tab | [F] Foc | [I] Ins | [^P] Curl | [G] Swagger | [O] Open | [K] API ";
+    let footer_text = " [H] Hist | [N] Tab | [F] Foc | [^P] Curl | [G] Swagger | [R] Ren | [O] Open | [K] API ";
     f.render_widget(Paragraph::new(footer_text).style(Style::default().fg(Color::DarkGray)).block(Block::default().borders(Borders::TOP).border_style(Style::default().fg(Color::Magenta))), footer_chunks[0]);
 
     // Dashboard de Sistema - ARTHEMA alineado a la derecha
@@ -137,6 +137,15 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         app.key_input.set_block(Block::default().title(" 🔑 CONFIGURE GEMINI API KEY (ENTER to save, ESC to cancel) ").borders(Borders::ALL).border_style(Style::default().fg(Color::Yellow)));
         app.key_input.set_cursor_style(Style::default().bg(Color::Yellow).fg(Color::Black));
         f.render_widget(app.key_input.widget(), area);
+    }
+
+    // MODAL: Swagger Input
+    if app.show_swagger_input {
+        let area = centered_rect(60, 20, f.size());
+        f.render_widget(Clear, area);
+        app.swagger_input.set_block(Block::default().title(" 🌐 IMPORT SWAGGER/OPENAPI URL (ENTER to import, ESC to cancel) ").borders(Borders::ALL).border_style(Style::default().fg(Color::Yellow)));
+        app.swagger_input.set_cursor_style(Style::default().bg(Color::Yellow).fg(Color::Black));
+        f.render_widget(app.swagger_input.widget(), area);
     }
 }
 

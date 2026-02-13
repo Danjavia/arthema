@@ -82,6 +82,8 @@ pub struct App<'a> {
     pub show_key_input: bool,
     pub swagger_input: TextArea<'a>,
     pub show_swagger_input: bool,
+    pub rename_input: TextArea<'a>,
+    pub show_rename_input: bool,
     pub selected_idx: usize,
     pub url_rect: Rect, pub headers_rect: Rect, pub body_rect: Rect, pub attach_rect: Rect,
     pub show_file_picker: bool,
@@ -106,6 +108,8 @@ impl<'a> App<'a> {
             show_key_input: false,
             swagger_input: TextArea::default(),
             show_swagger_input: false,
+            rename_input: TextArea::default(),
+            show_rename_input: false,
             selected_idx: 0,
             url_rect: Rect::default(), headers_rect: Rect::default(), body_rect: Rect::default(), attach_rect: Rect::default(),
             show_file_picker: false, current_dir: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")), file_entries: Vec::new(), file_picker_state: ListState::default(),
@@ -144,6 +148,29 @@ impl<'a> App<'a> {
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) {
+        if self.show_rename_input {
+            match key.code {
+                KeyCode::Esc => self.show_rename_input = false,
+                KeyCode::Enter => {
+                    let new_name = self.rename_input.lines()[0].trim().to_string();
+                    if !new_name.is_empty() && matches!(self.left_panel_tab, LeftPanelTab::Collections) {
+                        if let Some(req) = self.collections.requests.get(self.selected_idx).cloned() {
+                            // Borrar archivo viejo
+                            let _ = self.collections.delete_request(self.selected_idx);
+                            // Crear nuevo con nombre actualizado
+                            let mut updated_req = req;
+                            updated_req.name = new_name;
+                            let _ = self.collections.save_request(&updated_req);
+                            let _ = self.collections.load_all();
+                            self.ai_response = "SYSTEM: Request renamed.".to_string();
+                        }
+                    }
+                    self.show_rename_input = false;
+                }
+                _ => { self.rename_input.input(key); }
+            }
+            return;
+        }
         if self.show_swagger_input {
             match key.code {
                 KeyCode::Esc => self.show_swagger_input = false,
@@ -221,6 +248,15 @@ impl<'a> App<'a> {
             KeyCode::Char('M') => self.cycle_method(false),
             KeyCode::Char('f') => self.cycle_editor_focus(),
             KeyCode::Char('s') => self.save_current_request(),
+            KeyCode::Char('r') => {
+                if matches!(self.active_panel, ActivePanel::Collections) && matches!(self.left_panel_tab, LeftPanelTab::Collections) {
+                    if let Some(req) = self.collections.requests.get(self.selected_idx) {
+                        self.show_rename_input = true;
+                        self.rename_input = TextArea::default();
+                        self.rename_input.insert_str(&req.name);
+                    }
+                }
+            },
             KeyCode::Char('n') => self.next_tab(),
             KeyCode::Char('o') => self.open_in_system(),
             KeyCode::Char('c') => self.copy_to_system(),
