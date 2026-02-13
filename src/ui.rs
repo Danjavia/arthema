@@ -147,6 +147,15 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         app.swagger_input.set_cursor_style(Style::default().bg(Color::Yellow).fg(Color::Black));
         f.render_widget(app.swagger_input.widget(), area);
     }
+
+    // MODAL: Rename Input
+    if app.show_rename_input {
+        let area = centered_rect(60, 20, f.size());
+        f.render_widget(Clear, area);
+        app.rename_input.set_block(Block::default().title(" ✏️ RENAME REQUEST (ENTER to save, ESC to cancel) ").borders(Borders::ALL).border_style(Style::default().fg(Color::Yellow)));
+        app.rename_input.set_cursor_style(Style::default().bg(Color::Yellow).fg(Color::Black));
+        f.render_widget(app.rename_input.widget(), area);
+    }
 }
 
 fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
