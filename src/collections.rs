@@ -23,15 +23,8 @@ impl CollectionManager {
     pub fn new() -> Self {
         let base_path = ".clicaude".to_string();
         let coll_path = format!("{}/collections", base_path);
-        if !Path::new(&coll_path).exists() {
-            let _ = fs::create_dir_all(&coll_path);
-        }
-        
-        let mut manager = Self {
-            requests: Vec::new(),
-            history: Vec::new(),
-            base_path,
-        };
+        if !Path::new(&coll_path).exists() { let _ = fs::create_dir_all(&coll_path); }
+        let mut manager = Self { requests: Vec::new(), history: Vec::new(), base_path };
         let _ = manager.load_all();
         let _ = manager.load_history();
         manager
@@ -44,9 +37,7 @@ impl CollectionManager {
             for entry in entries.flatten() {
                 if entry.path().extension().and_then(|s| s.to_str()) == Some("json") {
                     let content = fs::read_to_string(entry.path())?;
-                    if let Ok(req) = serde_json::from_str::<ApiRequest>(&content) {
-                        self.requests.push(req);
-                    }
+                    if let Ok(req) = serde_json::from_str::<ApiRequest>(&content) { self.requests.push(req); }
                 }
             }
         }
@@ -60,10 +51,26 @@ impl CollectionManager {
         Ok(())
     }
 
+    pub fn delete_request(&mut self, idx: usize) -> Result<()> {
+        if let Some(req) = self.requests.get(idx) {
+            let path = format!("{}/collections/{}.json", self.base_path, req.name.replace(" ", "_"));
+            let _ = fs::remove_file(path);
+            self.requests.remove(idx);
+        }
+        Ok(())
+    }
+
     pub fn add_to_history(&mut self, req: ApiRequest) {
         self.history.insert(0, req);
-        if self.history.len() > 20 { self.history.pop(); }
+        if self.history.len() > 50 { self.history.pop(); }
         let _ = self.save_history();
+    }
+
+    pub fn delete_history_item(&mut self, idx: usize) {
+        if idx < self.history.len() {
+            self.history.remove(idx);
+            let _ = self.save_history();
+        }
     }
 
     fn save_history(&self) -> Result<()> {

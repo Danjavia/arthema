@@ -13,6 +13,7 @@ Arthema es una alternativa rápida, liviana y futurista a Postman/Bruno, escrita
 | `m` / `M` | Cambiar método HTTP (GET, POST, etc.) / `M` para retroceder |
 | `b` | Ciclar tipo de cuerpo (**JSON**, **TEXT**, **FORM**) |
 | `h` | Alternar panel izquierdo entre **Collections** e **History** |
+| `d` | **Eliminar** el elemento seleccionado en Collections o History |
 | `n` | Siguiente pestaña de petición |
 | `s` | Guardar petición actual en Colecciones |
 | `c` | Copiar contenido de la sección activa al portapapeles de Mac |
@@ -25,7 +26,6 @@ Arthema es una alternativa rápida, liviana y futurista a Postman/Bruno, escrita
 | `a` | **AI Suggest:** Sugiere una API según el texto en la URL |
 | `e` | **AI Explain:** Analiza y explica la respuesta técnica recibida |
 | `x` | **AI Fixer:** Analiza un error de petición y sugiere una corrección |
-| `t` | **Tree Mode:** (Roadmap) Alternar vista de árbol para JSON |
 
 ## 📝 Comandos de Edición (Modo Insert)
 
@@ -44,9 +44,3 @@ Arthema es una alternativa rápida, liviana y futurista a Postman/Bruno, escrita
 3. Navega con `↑` / `↓`.
 4. Selecciona `..` para subir de nivel o una carpeta para entrar.
 5. Presiona `Enter` sobre un archivo para adjuntarlo.
-
-## 📡 Roadmap
-- [ ] Soporte para **GraphQL**.
-- [ ] Variables de entorno dinámicas.
-- [ ] Generación automática de código (Rust, JS, Python).
-- [ ] Scripts pre y post ejecución.

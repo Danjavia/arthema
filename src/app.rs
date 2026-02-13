@@ -21,6 +21,9 @@ pub enum EditorFocus { Url, Headers, Body, Attachment }
 #[derive(Clone, Copy, PartialEq)]
 pub enum BodyType { Json, Text, Form }
 
+#[derive(Clone, Copy, PartialEq)]
+pub enum LeftPanelTab { Collections, History }
+
 pub struct RequestTab<'a> {
     pub name: String,
     pub url_area: TextArea<'a>,
@@ -54,7 +57,7 @@ pub struct App<'a> {
     pub active_tab: usize,
     pub ai_response: String,
     pub active_panel: ActivePanel,
-    pub left_panel_tab: crate::app::LeftPanelTab,
+    pub left_panel_tab: LeftPanelTab,
     pub input_mode: bool,
     pub is_ai_loading: bool,
     pub tx: mpsc::Sender<String>,
@@ -70,16 +73,13 @@ pub struct App<'a> {
     pub proc_cpu: f32, pub proc_mem: u64, pub battery_level: String, pub last_sys_update: Instant,
 }
 
-#[derive(Clone, Copy, PartialEq)]
-pub enum LeftPanelTab { Collections, History }
-
 impl<'a> App<'a> {
     pub fn new() -> App<'a> {
         let (tx, rx) = mpsc::channel();
         let mut sys = System::new_all(); sys.refresh_all();
         App {
             tabs: vec![RequestTab::new("Req 1".to_string())], active_tab: 0,
-            ai_response: "ARTHEMA READY. ROADMAP: GraphQL Support.".to_string(),
+            ai_response: "ARTHEMA READY".to_string(),
             active_panel: ActivePanel::Editor, left_panel_tab: LeftPanelTab::Collections,
             input_mode: false, is_ai_loading: false, tx, rx, collections: CollectionManager::new(),
             selected_idx: 0,
@@ -155,12 +155,14 @@ impl<'a> App<'a> {
                 EditorFocus::Url => { tab.url_area.input(key); }
                 EditorFocus::Headers => { tab.headers_area.input(key); }
                 EditorFocus::Body => { tab.body_area.input(key); }
-                EditorFocus::Attachment => { if key.code == KeyCode::Enter { self.open_file_picker(); } }
+                _ => {}
             }
             return;
         }
         match key.code {
             KeyCode::Char('i') => self.input_mode = true,
+            KeyCode::Char('h') => self.toggle_left_panel(),
+            KeyCode::Char('d') => self.delete_selected_item(), // Nuevo: d para borrar
             KeyCode::Char('b') => self.cycle_body_type(),
             KeyCode::Char('t') => { let t = self.current_tab_mut(); t.is_tree_mode = !t.is_tree_mode; }
             KeyCode::Char('m') => self.cycle_method(true),
@@ -174,6 +176,17 @@ impl<'a> App<'a> {
             KeyCode::Up => self.move_selection(-1),
             KeyCode::Down => self.move_selection(1),
             _ => {}
+        }
+    }
+
+    fn delete_selected_item(&mut self) {
+        if matches!(self.active_panel, ActivePanel::Collections) {
+            match self.left_panel_tab {
+                LeftPanelTab::Collections => { let _ = self.collections.delete_request(self.selected_idx); }
+                LeftPanelTab::History => { self.collections.delete_history_item(self.selected_idx); }
+            }
+            if self.selected_idx > 0 { self.selected_idx -= 1; }
+            self.ai_response = "SYSTEM: Item deleted.".to_string();
         }
     }
 
@@ -194,7 +207,12 @@ impl<'a> App<'a> {
         }
     }
 
-    fn toggle_left_panel(&mut self) { self.left_panel_tab = match self.left_panel_tab { LeftPanelTab::Collections => LeftPanelTab::History, LeftPanelTab::History => LeftPanelTab::Collections }; self.selected_idx = 0; }
+    fn toggle_left_panel(&mut self) { 
+        self.left_panel_tab = match self.left_panel_tab { LeftPanelTab::Collections => LeftPanelTab::History, LeftPanelTab::History => LeftPanelTab::Collections }; 
+        self.selected_idx = 0;
+        self.active_panel = ActivePanel::Collections; // Aseguramos foco al cambiar
+    }
+
     fn new_tab(&mut self) { self.tabs.push(RequestTab::new(format!("Req {}", self.tabs.len() + 1))); self.active_tab = self.tabs.len() - 1; }
     fn next_tab(&mut self) { self.active_tab = (self.active_tab + 1) % self.tabs.len(); }
 
@@ -210,16 +228,9 @@ impl<'a> App<'a> {
             ActivePanel::AI => self.ai_response.clone(),
             _ => "".to_string(),
         };
-        if text.is_empty() { self.ai_response = "SYSTEM: Nothing to copy.".to_string(); return; }
-        
-        match Command::new("pbcopy").stdin(Stdio::piped()).spawn() {
-            Ok(mut child) => {
-                if let Some(mut stdin) = child.stdin.take() { let _ = stdin.write_all(text.as_bytes()); }
-                let _ = child.wait();
-                self.ai_response = format!("SYSTEM: Copied {} chars to clipboard.", text.len());
-            }
-            Err(e) => { self.ai_response = format!("SYSTEM: Copy Error: {}", e); }
-        }
+        if text.is_empty() { return; }
+        let _ = Command::new("pbcopy").stdin(Stdio::piped()).spawn().and_then(|mut c| { if let Some(mut s) = c.stdin.take() { let _ = s.write_all(text.as_bytes()); } let _ = c.wait(); Ok(()) });
+        self.ai_response = "SYSTEM: Copied.".to_string();
     }
 
     fn paste_from_pbpaste(&mut self) {
