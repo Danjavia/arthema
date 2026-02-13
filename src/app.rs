@@ -64,6 +64,9 @@ pub struct App<'a> {
     pub tx: mpsc::Sender<String>,
     pub rx: mpsc::Receiver<String>,
     pub collections: CollectionManager,
+    pub config: crate::config::Config,
+    pub key_input: TextArea<'a>,
+    pub show_key_input: bool,
     pub selected_idx: usize,
     pub url_rect: Rect, pub headers_rect: Rect, pub body_rect: Rect, pub attach_rect: Rect,
     pub show_file_picker: bool,
@@ -83,6 +86,9 @@ impl<'a> App<'a> {
             ai_response: "ARTHEMA SYSTEM READY".to_string(),
             active_panel: ActivePanel::Editor, left_panel_tab: LeftPanelTab::Collections,
             input_mode: false, is_ai_loading: false, tx, rx, collections: CollectionManager::new(),
+            config: crate::config::Config::load(),
+            key_input: TextArea::default(),
+            show_key_input: false,
             selected_idx: 0,
             url_rect: Rect::default(), headers_rect: Rect::default(), body_rect: Rect::default(), attach_rect: Rect::default(),
             show_file_picker: false, current_dir: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")), file_entries: Vec::new(), file_picker_state: ListState::default(),
@@ -121,6 +127,22 @@ impl<'a> App<'a> {
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) {
+        if self.show_key_input {
+            match key.code {
+                KeyCode::Esc => self.show_key_input = false,
+                KeyCode::Enter => {
+                    let key_str = self.key_input.lines()[0].trim().to_string();
+                    if !key_str.is_empty() {
+                        self.config.gemini_api_key = Some(key_str);
+                        let _ = self.config.save();
+                        self.ai_response = "SYSTEM: Gemini API Key updated.".to_string();
+                    }
+                    self.show_key_input = false;
+                }
+                _ => { self.key_input.input(key); }
+            }
+            return;
+        }
         if self.show_file_picker {
             match key.code {
                 KeyCode::Up => { let i = match self.file_picker_state.selected() { Some(i) => if i > 0 { i - 1 } else { self.file_entries.len() - 1 }, None => 0 }; self.file_picker_state.select(Some(i)); }
@@ -175,6 +197,14 @@ impl<'a> App<'a> {
             KeyCode::Char('s') => self.save_current_request(),
             KeyCode::Char('n') => self.next_tab(),
             KeyCode::Char('c') => self.copy_to_system(),
+            KeyCode::Char('k') => { 
+                self.show_key_input = true; 
+                self.key_input = TextArea::default();
+                if let Some(key) = &self.config.gemini_api_key { self.key_input.insert_str(key); }
+            },
+            KeyCode::Char('a') => self.trigger_ai_suggestion(),
+            KeyCode::Char('e') => self.trigger_ai_explain(),
+            KeyCode::Char('x') => self.trigger_ai_fix(),
             KeyCode::Enter => { if matches!(self.active_panel, ActivePanel::Collections) { self.load_selected_item(); } else if matches!(self.current_tab().editor_focus, EditorFocus::Attachment) { self.open_file_picker(); } else { self.send_request(); } }
             KeyCode::Tab => self.next_panel(),
             KeyCode::Up => self.move_selection(-1),
@@ -321,9 +351,9 @@ impl<'a> App<'a> {
         });
     }
 
-    pub fn trigger_ai_suggestion(&mut self) { if !self.is_ai_loading { self.is_ai_loading = true; let tx = self.tx.clone(); let url = self.current_tab().url_area.lines()[0].clone(); tokio::spawn(async move { let s = crate::ai::get_ai_suggestion(&url).await; let _ = tx.send(format!("AI_SUGGESTION:{}", s)); }); } }
-    pub fn trigger_ai_explain(&mut self) { if !self.is_ai_loading { self.is_ai_loading = true; let tx = self.tx.clone(); let r = self.current_tab().response.clone(); tokio::spawn(async move { let e = crate::ai::explain_response(&r).await; let _ = tx.send(format!("AI_EXPLANATION:{}", e)); }); } }
-    pub fn trigger_ai_fix(&mut self) { if !self.is_ai_loading { self.is_ai_loading = true; let t = self.current_tab(); let tx = self.tx.clone(); let (m, u, h, b, e) = (t.method.clone(), t.url_area.lines()[0].clone(), t.headers_area.lines().join("\n"), t.body_area.lines().join("\n"), t.response.clone()); tokio::spawn(async move { let e = crate::ai::fix_error(&m, &u, &h, &b, &e).await; let _ = tx.send(format!("AI_EXPLANATION:{}", e)); }); } }
+    pub fn trigger_ai_suggestion(&mut self) { if !self.is_ai_loading { self.is_ai_loading = true; let tx = self.tx.clone(); let url = self.current_tab().url_area.lines()[0].clone(); let key = self.config.gemini_api_key.clone().unwrap_or_default(); tokio::spawn(async move { let s = crate::ai::get_ai_suggestion(&key, &url).await; let _ = tx.send(format!("AI_SUGGESTION:{}", s)); }); } }
+    pub fn trigger_ai_explain(&mut self) { if !self.is_ai_loading { self.is_ai_loading = true; let tx = self.tx.clone(); let r = self.current_tab().response.clone(); let key = self.config.gemini_api_key.clone().unwrap_or_default(); tokio::spawn(async move { let e = crate::ai::explain_response(&key, &r).await; let _ = tx.send(format!("AI_EXPLANATION:{}", e)); }); } }
+    pub fn trigger_ai_fix(&mut self) { if !self.is_ai_loading { self.is_ai_loading = true; let t = self.current_tab(); let tx = self.tx.clone(); let (m, u, h, b, e) = (t.method.clone(), t.url_area.lines()[0].clone(), t.headers_area.lines().join("\n"), t.body_area.lines().join("\n"), t.response.clone()); let key = self.config.gemini_api_key.clone().unwrap_or_default(); tokio::spawn(async move { let e = crate::ai::fix_error(&key, &m, &u, &h, &b, &e).await; let _ = tx.send(format!("AI_EXPLANATION:{}", e)); }); } }
 
     pub fn update(&mut self) {
         while let Ok(res) = self.rx.try_recv() {

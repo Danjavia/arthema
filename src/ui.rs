@@ -106,7 +106,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         .constraints([Constraint::Min(0), Constraint::Length(75)])
         .split(chunks[1]);
 
-    let footer_text = " [H] Hist | [N] Tab | [F] Foc | [I] Ins | [C] Copy | [S] Save | [D] Del ";
+    let footer_text = " [H] Hist | [N] Tab | [F] Foc | [I] Ins | [C] Copy | [S] Save | [D] Del | [K] API Key ";
     f.render_widget(Paragraph::new(footer_text).style(Style::default().fg(Color::DarkGray)).block(Block::default().borders(Borders::TOP).border_style(Style::default().fg(Color::Magenta))), footer_chunks[0]);
 
     // Dashboard de Sistema - ARTHEMA alineado a la derecha
@@ -117,17 +117,18 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         Span::styled("|", Style::default().fg(Color::DarkGray)),
         Span::styled(format!(" MEM: {}MB ", app.mem_used), Style::default().fg(Color::Cyan)),
         Span::styled("|", Style::default().fg(Color::DarkGray)),
-        Span::styled(format!(" ARTHEMA: {:.1}% {}MB ", app.proc_cpu, app.proc_mem), Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
+        Span::styled(format!(" ARTHEMA v{} : {:.1}% {}MB ", env!("CARGO_PKG_VERSION"), app.proc_cpu, app.proc_mem), Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
     ]);
     f.render_widget(Paragraph::new(sys_metrics).alignment(Alignment::Right).block(Block::default().borders(Borders::TOP).border_style(Style::default().fg(Color::Magenta))), footer_chunks[1]);
 
     // MODAL: File Picker
-    if app.show_file_picker {
-        let area = centered_rect(60, 60, f.size());
+    // MODAL: API Key Input
+    if app.show_key_input {
+        let area = centered_rect(60, 20, f.size());
         f.render_widget(Clear, area);
-        let items: Vec<ListItem> = app.file_entries.iter().map(|fi| ListItem::new(fi.as_str()).style(Style::default().fg(Color::White))).collect();
-        let list = List::new(items).block(Block::default().title(" 📁 SELECT FILE ").borders(Borders::ALL).border_style(Style::default().fg(Color::Yellow))).highlight_style(Style::default().fg(Color::Black).bg(Color::Yellow)).highlight_symbol(">> ");
-        f.render_stateful_widget(list, area, &mut app.file_picker_state);
+        app.key_input.set_block(Block::default().title(" 🔑 CONFIGURE GEMINI API KEY (ENTER to save, ESC to cancel) ").borders(Borders::ALL).border_style(Style::default().fg(Color::Yellow)));
+        app.key_input.set_cursor_style(Style::default().bg(Color::Yellow).fg(Color::Black));
+        f.render_widget(app.key_input.widget(), area);
     }
 }
 
