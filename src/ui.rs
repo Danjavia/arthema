@@ -53,7 +53,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     };
     f.render_widget(List::new(items).block(Block::default().borders(Borders::ALL).border_style(get_border_style(app.active_panel, ActivePanel::Collections))), left_chunks[1]);
 
-    // 2. Editor Panel con Selector de Body Type
+    // 2. Editor Panel
     let editor_root = Layout::default().direction(Direction::Vertical).constraints([Constraint::Length(3), Constraint::Min(0)]).split(main_chunks[1]);
     let tab_titles: Vec<Line> = app.tabs.iter().enumerate().map(|(i, t)| {
         if i == app.active_tab { Line::from(vec![Span::styled(format!(" {} ", t.name), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))]) }
@@ -80,7 +80,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     f.render_widget(tab.url_area.widget(), editor_area[0]);
 
     // Body Type Selector
-    let bt_titles = vec![" JSON ", " TEXT ", " FORM (Multipart) "];
+    let bt_titles = vec![" JSON ", " TEXT ", " FORM "];
     let bt_idx = match tab.body_type { BodyType::Json => 0, BodyType::Text => 1, BodyType::Form => 2 };
     let bt_tabs = Tabs::new(bt_titles)
         .block(Block::default().title(" ⚙️ BODY TYPE ").borders(Borders::ALL).border_style(Style::default().fg(Color::DarkGray)))
@@ -100,7 +100,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 
     // Attachment
     let att_style = if tab.editor_focus == EditorFocus::Attachment { Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD) } else { Style::default().fg(Color::Cyan) };
-    let att_content = if tab.file_path.is_empty() { "Press ENTER to browse files...".to_string() } else { format!("📎 {}", tab.file_path) };
+    let att_content = if tab.file_path.is_empty() { "Press ENTER to browse...".to_string() } else { format!("📎 {}", tab.file_path) };
     f.render_widget(Paragraph::new(att_content).style(att_style).block(Block::default().title(" 🖇 ATTACHMENT ").borders(Borders::ALL).border_style(att_style)), editor_area[4]);
 
     // 3. Response & AI
@@ -111,7 +111,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 
     // Footer
     let footer_chunks = Layout::default().direction(Direction::Horizontal).constraints([Constraint::Min(0), Constraint::Length(70)]).split(chunks[2]);
-    let footer_text = " [B] Body Type | [T] Tree Mode | [N] Tab | [F] Focus | [Enter] Run ";
+    let footer_text = " [H] History | [F] Focus | [I] Insert | [C] Copy | [S] Save | [D] Del Item/Attach ";
     f.render_widget(Paragraph::new(footer_text).style(Style::default().fg(Color::DarkGray)).block(Block::default().borders(Borders::TOP).border_style(Style::default().fg(Color::Magenta))), footer_chunks[0]);
 
     let sys_metrics = Line::from(vec![
@@ -129,11 +129,14 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     if app.show_file_picker {
         let area = centered_rect(60, 60, f.size());
         f.render_widget(Clear, area);
-        let items: Vec<ListItem> = app.file_entries.iter().enumerate().map(|(i, fi)| {
-            let style = if i == app.selected_file_idx { Style::default().fg(Color::Black).bg(Color::Yellow) } else { Style::default().fg(Color::White) };
-            ListItem::new(fi.as_str()).style(style)
+        let items: Vec<ListItem> = app.file_entries.iter().map(|fi| {
+            ListItem::new(fi.as_str()).style(Style::default().fg(Color::White))
         }).collect();
-        f.render_widget(List::new(items).block(Block::default().title(" 📁 SELECT FILE ").borders(Borders::ALL).border_style(Style::default().fg(Color::Yellow))), area);
+        let list = List::new(items)
+            .block(Block::default().title(" 📁 SELECT FILE ").borders(Borders::ALL).border_style(Style::default().fg(Color::Yellow)))
+            .highlight_style(Style::default().fg(Color::Black).bg(Color::Yellow))
+            .highlight_symbol(">> ");
+        f.render_stateful_widget(list, area, &mut app.file_picker_state);
     }
 }
 

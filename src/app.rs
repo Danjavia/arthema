@@ -8,6 +8,7 @@ use tui_textarea::{TextArea, CursorMove};
 use std::process::{Command, Stdio};
 use std::io::Write;
 use ratatui::layout::Rect;
+use ratatui::widgets::ListState;
 use sysinfo::{System, Pid};
 use std::fs;
 use std::path::{PathBuf};
@@ -65,10 +66,12 @@ pub struct App<'a> {
     pub collections: CollectionManager,
     pub selected_idx: usize,
     pub url_rect: Rect, pub headers_rect: Rect, pub body_rect: Rect, pub attach_rect: Rect,
+    // File Picker con Estado para Scroll
     pub show_file_picker: bool,
     pub current_dir: PathBuf,
     pub file_entries: Vec<String>,
-    pub selected_file_idx: usize,
+    pub file_picker_state: ListState,
+    // Métricas
     pub sys: System, pub cpu_usage: f32, pub mem_total: u64, pub mem_used: u64,
     pub proc_cpu: f32, pub proc_mem: u64, pub battery_level: String, pub last_sys_update: Instant,
 }
@@ -84,7 +87,7 @@ impl<'a> App<'a> {
             input_mode: false, is_ai_loading: false, tx, rx, collections: CollectionManager::new(),
             selected_idx: 0,
             url_rect: Rect::default(), headers_rect: Rect::default(), body_rect: Rect::default(), attach_rect: Rect::default(),
-            show_file_picker: false, current_dir: std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/")), file_entries: Vec::new(), selected_file_idx: 0,
+            show_file_picker: false, current_dir: std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/")), file_entries: Vec::new(), file_picker_state: ListState::default(),
             sys, cpu_usage: 0.0, mem_total: 0, mem_used: 0, proc_cpu: 0.0, proc_mem: 0,
             battery_level: "N/A".to_string(), last_sys_update: Instant::now(),
         }
@@ -122,15 +125,29 @@ impl<'a> App<'a> {
     pub fn handle_key(&mut self, key: KeyEvent) {
         if self.show_file_picker {
             match key.code {
-                KeyCode::Up => { if self.selected_file_idx > 0 { self.selected_file_idx -= 1; } }
-                KeyCode::Down => { if self.selected_file_idx < self.file_entries.len() - 1 { self.selected_file_idx += 1; } }
+                KeyCode::Up => {
+                    let i = match self.file_picker_state.selected() {
+                        Some(i) => if i > 0 { i - 1 } else { self.file_entries.len() - 1 },
+                        None => 0,
+                    };
+                    self.file_picker_state.select(Some(i));
+                }
+                KeyCode::Down => {
+                    let i = match self.file_picker_state.selected() {
+                        Some(i) => if i < self.file_entries.len() - 1 { i + 1 } else { 0 },
+                        None => 0,
+                    };
+                    self.file_picker_state.select(Some(i));
+                }
                 KeyCode::Enter => {
-                    let entry = self.file_entries[self.selected_file_idx].clone();
-                    if entry == ".." { self.current_dir.pop(); self.refresh_file_entries(); }
-                    else {
-                        let path = self.current_dir.join(&entry);
-                        if path.is_dir() { self.current_dir = path; self.refresh_file_entries(); }
-                        else { self.current_tab_mut().file_path = path.to_string_lossy().to_string(); self.show_file_picker = false; }
+                    if let Some(i) = self.file_picker_state.selected() {
+                        let entry = self.file_entries[i].clone();
+                        if entry == ".." { self.current_dir.pop(); self.refresh_file_entries(); }
+                        else {
+                            let path = self.current_dir.join(&entry);
+                            if path.is_dir() { self.current_dir = path; self.refresh_file_entries(); }
+                            else { self.current_tab_mut().file_path = path.to_string_lossy().to_string(); self.show_file_picker = false; }
+                        }
                     }
                 }
                 KeyCode::Esc => self.show_file_picker = false,
@@ -155,14 +172,14 @@ impl<'a> App<'a> {
                 EditorFocus::Url => { tab.url_area.input(key); }
                 EditorFocus::Headers => { tab.headers_area.input(key); }
                 EditorFocus::Body => { tab.body_area.input(key); }
-                _ => {}
+                EditorFocus::Attachment => { if key.code == KeyCode::Enter { self.open_file_picker(); } }
             }
             return;
         }
         match key.code {
             KeyCode::Char('i') => self.input_mode = true,
             KeyCode::Char('h') => self.toggle_left_panel(),
-            KeyCode::Char('d') => self.delete_selected_item(), // Nuevo: d para borrar
+            KeyCode::Char('d') => self.handle_delete(),
             KeyCode::Char('b') => self.cycle_body_type(),
             KeyCode::Char('t') => { let t = self.current_tab_mut(); t.is_tree_mode = !t.is_tree_mode; }
             KeyCode::Char('m') => self.cycle_method(true),
@@ -179,14 +196,23 @@ impl<'a> App<'a> {
         }
     }
 
-    fn delete_selected_item(&mut self) {
-        if matches!(self.active_panel, ActivePanel::Collections) {
-            match self.left_panel_tab {
-                LeftPanelTab::Collections => { let _ = self.collections.delete_request(self.selected_idx); }
-                LeftPanelTab::History => { self.collections.delete_history_item(self.selected_idx); }
-            }
-            if self.selected_idx > 0 { self.selected_idx -= 1; }
-            self.ai_response = "SYSTEM: Item deleted.".to_string();
+    fn handle_delete(&mut self) {
+        match self.active_panel {
+            ActivePanel::Collections => {
+                match self.left_panel_tab {
+                    LeftPanelTab::Collections => { let _ = self.collections.delete_request(self.selected_idx); }
+                    LeftPanelTab::History => { self.collections.delete_history_item(self.selected_idx); }
+                }
+                if self.selected_idx > 0 { self.selected_idx -= 1; }
+                self.ai_response = "SYSTEM: Item deleted.".to_string();
+            },
+            ActivePanel::Editor => {
+                if self.current_tab().editor_focus == EditorFocus::Attachment {
+                    self.current_tab_mut().file_path.clear();
+                    self.ai_response = "SYSTEM: Attachment removed.".to_string();
+                }
+            },
+            _ => {}
         }
     }
 
@@ -194,7 +220,7 @@ impl<'a> App<'a> {
     fn refresh_file_entries(&mut self) {
         self.file_entries.clear(); self.file_entries.push("..".to_string());
         if let Ok(entries) = fs::read_dir(&self.current_dir) { for entry in entries.flatten() { self.file_entries.push(entry.file_name().to_string_lossy().to_string()); } }
-        self.selected_file_idx = 0;
+        self.file_picker_state.select(Some(0));
     }
 
     fn cycle_body_type(&mut self) {
@@ -207,12 +233,7 @@ impl<'a> App<'a> {
         }
     }
 
-    fn toggle_left_panel(&mut self) { 
-        self.left_panel_tab = match self.left_panel_tab { LeftPanelTab::Collections => LeftPanelTab::History, LeftPanelTab::History => LeftPanelTab::Collections }; 
-        self.selected_idx = 0;
-        self.active_panel = ActivePanel::Collections; // Aseguramos foco al cambiar
-    }
-
+    fn toggle_left_panel(&mut self) { self.left_panel_tab = match self.left_panel_tab { LeftPanelTab::Collections => LeftPanelTab::History, LeftPanelTab::History => LeftPanelTab::Collections }; self.selected_idx = 0; self.active_panel = ActivePanel::Collections; }
     fn new_tab(&mut self) { self.tabs.push(RequestTab::new(format!("Req {}", self.tabs.len() + 1))); self.active_tab = self.tabs.len() - 1; }
     fn next_tab(&mut self) { self.active_tab = (self.active_tab + 1) % self.tabs.len(); }
 
@@ -252,7 +273,7 @@ impl<'a> App<'a> {
             ActivePanel::Editor => {
                 let tab = self.current_tab_mut();
                 let key = if delta > 0 { KeyEvent::new(KeyCode::Down, KeyModifiers::empty()) } else { KeyEvent::new(KeyCode::Up, KeyModifiers::empty()) };
-                match tab.editor_focus { EditorFocus::Url => tab.url_area.input(key), EditorFocus::Headers => tab.headers_area.input(key), EditorFocus::Body => tab.body_area.input(key), _ => false };
+                match tab.editor_focus { EditorFocus::Url => { tab.url_area.input(key); }, EditorFocus::Headers => { tab.headers_area.input(key); }, EditorFocus::Body => { tab.body_area.input(key); }, _ => {} };
             }
             _ => {}
         }
@@ -272,10 +293,10 @@ impl<'a> App<'a> {
     pub fn next_panel(&mut self) { self.active_panel = match self.active_panel { ActivePanel::Collections => ActivePanel::Editor, ActivePanel::Editor => ActivePanel::Response, ActivePanel::Response => ActivePanel::AI, _ => ActivePanel::Collections }; }
 
     fn save_current_request(&mut self) {
-        let t = self.current_tab();
+        let (url, method, h_lines, body) = { let t = self.current_tab(); (t.url_area.lines()[0].clone(), t.method.clone(), t.headers_area.lines().iter().map(|s| s.to_string()).collect::<Vec<_>>(), t.body_area.lines().join("\n")) };
         let mut hs = HashMap::new();
-        for l in t.headers_area.lines() { let pts: Vec<&str> = l.splitn(2, ':').collect(); if pts.len() == 2 { hs.insert(pts[0].trim().to_string(), pts[1].trim().to_string()); } }
-        let new_req = ApiRequest { name: format!("Req_{}", self.collections.requests.len() + 1), url: t.url_area.lines()[0].clone(), method: t.method.clone(), headers: hs, body: Some(t.body_area.lines().join("\n")) };
+        for l in h_lines { let p: Vec<&str> = l.splitn(2, ':').collect(); if p.len() == 2 { hs.insert(p[0].trim().to_string(), p[1].trim().to_string()); } }
+        let new_req = ApiRequest { name: format!("Req_{}", self.collections.requests.len() + 1), url, method, headers: hs, body: Some(body) };
         if self.collections.save_request(&new_req).is_ok() { let _ = self.collections.load_all(); self.ai_response = "SYSTEM: saved.".to_string(); }
     }
 
