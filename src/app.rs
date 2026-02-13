@@ -251,10 +251,11 @@ impl<'a> App<'a> {
             KeyCode::Char('r') => {
                 if matches!(self.left_panel_tab, LeftPanelTab::Collections) {
                     if let Some(req) = self.collections.requests.get(self.selected_idx) {
-                        self.active_panel = ActivePanel::Collections;
-                        self.show_rename_input = true;
+                        self.input_mode = false;
                         self.rename_input = TextArea::default();
                         self.rename_input.insert_str(&req.name);
+                        self.show_rename_input = true;
+                        self.active_panel = ActivePanel::Collections;
                     }
                 }
             },
@@ -262,11 +263,13 @@ impl<'a> App<'a> {
             KeyCode::Char('o') => self.open_in_system(),
             KeyCode::Char('c') => self.copy_to_system(),
             KeyCode::Char('k') => { 
+                self.input_mode = false;
                 self.show_key_input = true; 
                 self.key_input = TextArea::default();
                 if let Some(key) = &self.config.gemini_api_key { self.key_input.insert_str(key); }
             },
             KeyCode::Char('g') => {
+                self.input_mode = false;
                 self.show_swagger_input = true;
                 self.swagger_input = TextArea::default();
                 self.swagger_input.insert_str("https://petstore.swagger.io/v2/swagger.json");
