@@ -249,8 +249,9 @@ impl<'a> App<'a> {
             KeyCode::Char('f') => self.cycle_editor_focus(),
             KeyCode::Char('s') => self.save_current_request(),
             KeyCode::Char('r') => {
-                if matches!(self.active_panel, ActivePanel::Collections) && matches!(self.left_panel_tab, LeftPanelTab::Collections) {
+                if matches!(self.left_panel_tab, LeftPanelTab::Collections) {
                     if let Some(req) = self.collections.requests.get(self.selected_idx) {
+                        self.active_panel = ActivePanel::Collections;
                         self.show_rename_input = true;
                         self.rename_input = TextArea::default();
                         self.rename_input.insert_str(&req.name);
