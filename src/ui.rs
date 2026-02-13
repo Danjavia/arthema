@@ -12,19 +12,10 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(6), // Header
-            Constraint::Min(0),    // Main
+            Constraint::Min(0),    // Main area (reclamamos espacio del header)
             Constraint::Length(3), // Footer
         ])
         .split(f.size());
-
-    // Header
-    let header_art = " ▟████▙ ██████  ████████ ██      ██ ████████ ▟████▙ ▟████▙ 
-▟█▘  █▙ ██   ██    ██    ██      ██ ██       ██    ██ ██    ██ 
-████████ ██████     ██    ████████ ██████   ████████ ████████ 
-██    ██ ██   ██    ██    ██      ██ ██       ██    ██ ██    ██ 
-██    ██ ██   ██    ██    ██      ██ ████████ ██    ██ ██    ██ ";
-    f.render_widget(Paragraph::new(header_art).style(Style::default().fg(Color::Cyan)), chunks[0]);
 
     let main_chunks = Layout::default()
         .direction(Direction::Horizontal)
@@ -33,7 +24,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             Constraint::Percentage(45), 
             Constraint::Percentage(30),
         ])
-        .split(chunks[1]);
+        .split(chunks[0]);
 
     // 1. Panel Izquierdo
     let left_chunks = Layout::default().direction(Direction::Vertical).constraints([Constraint::Length(3), Constraint::Min(0)]).split(main_chunks[0]);
@@ -53,7 +44,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     };
     f.render_widget(List::new(items).block(Block::default().borders(Borders::ALL).border_style(get_border_style(app.active_panel, ActivePanel::Collections))), left_chunks[1]);
 
-    // 2. Editor Panel
+    // 2. Editor Panel con Pestañas
     let editor_root = Layout::default().direction(Direction::Vertical).constraints([Constraint::Length(3), Constraint::Min(0)]).split(main_chunks[1]);
     let tab_titles: Vec<Line> = app.tabs.iter().enumerate().map(|(i, t)| {
         if i == app.active_tab { Line::from(vec![Span::styled(format!(" {} ", t.name), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))]) }
@@ -110,10 +101,15 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     f.render_widget(Paragraph::new(app.ai_response.as_str()).style(Style::default().fg(Color::Magenta)).block(Block::default().title(" 🧠 AI AGENT ").borders(Borders::ALL).border_style(get_border_style(active_panel, ActivePanel::AI))).wrap(Wrap { trim: true }), right_chunks[1]);
 
     // Footer
-    let footer_chunks = Layout::default().direction(Direction::Horizontal).constraints([Constraint::Min(0), Constraint::Length(70)]).split(chunks[2]);
-    let footer_text = " [H] History | [F] Focus | [I] Insert | [C] Copy | [S] Save | [D] Del Item/Attach ";
+    let footer_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Min(0), Constraint::Length(75)])
+        .split(chunks[1]);
+
+    let footer_text = " [H] Hist | [N] Tab | [F] Foc | [I] Ins | [C] Copy | [S] Save | [D] Del ";
     f.render_widget(Paragraph::new(footer_text).style(Style::default().fg(Color::DarkGray)).block(Block::default().borders(Borders::TOP).border_style(Style::default().fg(Color::Magenta))), footer_chunks[0]);
 
+    // Dashboard de Sistema - ARTHEMA alineado a la derecha
     let sys_metrics = Line::from(vec![
         Span::styled(format!(" ⚡ BAT: {} ", app.battery_level), Style::default().fg(Color::Cyan)),
         Span::styled("|", Style::default().fg(Color::DarkGray)),
@@ -121,7 +117,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         Span::styled("|", Style::default().fg(Color::DarkGray)),
         Span::styled(format!(" MEM: {}MB ", app.mem_used), Style::default().fg(Color::Cyan)),
         Span::styled("|", Style::default().fg(Color::DarkGray)),
-        Span::styled(format!(" APP: {:.1}% {}MB ", app.proc_cpu, app.proc_mem), Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
+        Span::styled(format!(" ARTHEMA: {:.1}% {}MB ", app.proc_cpu, app.proc_mem), Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
     ]);
     f.render_widget(Paragraph::new(sys_metrics).alignment(Alignment::Right).block(Block::default().borders(Borders::TOP).border_style(Style::default().fg(Color::Magenta))), footer_chunks[1]);
 
@@ -129,13 +125,8 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     if app.show_file_picker {
         let area = centered_rect(60, 60, f.size());
         f.render_widget(Clear, area);
-        let items: Vec<ListItem> = app.file_entries.iter().map(|fi| {
-            ListItem::new(fi.as_str()).style(Style::default().fg(Color::White))
-        }).collect();
-        let list = List::new(items)
-            .block(Block::default().title(" 📁 SELECT FILE ").borders(Borders::ALL).border_style(Style::default().fg(Color::Yellow)))
-            .highlight_style(Style::default().fg(Color::Black).bg(Color::Yellow))
-            .highlight_symbol(">> ");
+        let items: Vec<ListItem> = app.file_entries.iter().map(|fi| ListItem::new(fi.as_str()).style(Style::default().fg(Color::White))).collect();
+        let list = List::new(items).block(Block::default().title(" 📁 SELECT FILE ").borders(Borders::ALL).border_style(Style::default().fg(Color::Yellow))).highlight_style(Style::default().fg(Color::Black).bg(Color::Yellow)).highlight_symbol(">> ");
         f.render_stateful_widget(list, area, &mut app.file_picker_state);
     }
 }
