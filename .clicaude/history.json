@@ -1,5 +1,41 @@
 [
   {
+    "name": "https://jsonplaceholder.typicode.com/posts",
+    "url": "https://jsonplaceholder.typicode.com/posts",
+    "method": "GET",
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": "{\n  \"title\": \"Arthema\"\n}"
+  },
+  {
+    "name": "https://jsonplaceholder.typicode.com/posts",
+    "url": "https://jsonplaceholder.typicode.com/posts",
+    "method": "GET",
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": "{\n  \"title\": \"Arthema\"\n}"
+  },
+  {
+    "name": "https://jsonplaceholder.typicode.com/posts",
+    "url": "https://jsonplaceholder.typicode.com/posts",
+    "method": "GET",
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": "{\n  \"title\": \"Arthema\"\n}"
+  },
+  {
+    "name": "https://jsonplaceholder.typicode.com/posts",
+    "url": "https://jsonplaceholder.typicode.com/posts",
+    "method": "GET",
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": "{\n  \"title\": \"Arthema\"\n}"
+  },
+  {
     "name": "https://jsonplaceholder.typicode.com/comments",
     "url": "https://jsonplaceholder.typicode.com/comments",
     "method": "GET",

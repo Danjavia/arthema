@@ -1,12 +1,12 @@
 use ratatui::{
-    layout::{Constraint, Direction, Layout, Alignment},
+    layout::{Constraint, Direction, Layout, Rect, Alignment},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, Paragraph, Wrap, List, ListItem, Tabs},
+    widgets::{Block, Borders, Paragraph, Wrap, List, ListItem, Tabs, Clear},
     Frame,
 };
 
-use crate::app::{ActivePanel, App, EditorFocus, LeftPanelTab};
+use crate::app::{ActivePanel, App, EditorFocus, BodyType};
 
 pub fn draw(f: &mut Frame, app: &mut App) {
     let chunks = Layout::default()
@@ -36,123 +36,82 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         .split(chunks[1]);
 
     // 1. Panel Izquierdo
-    let left_chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(3), Constraint::Min(0)])
-        .split(main_chunks[0]);
-
+    let left_chunks = Layout::default().direction(Direction::Vertical).constraints([Constraint::Length(3), Constraint::Min(0)]).split(main_chunks[0]);
     let titles = vec![" COLLECTIONS ", " HISTORY "];
-    let sel_idx = match app.left_panel_tab {
-        LeftPanelTab::Collections => 0,
-        LeftPanelTab::History => 1,
-    };
-    let tabs = Tabs::new(titles)
-        .block(Block::default().borders(Borders::ALL).border_style(get_border_style(app.active_panel, ActivePanel::Collections)))
-        .select(sel_idx)
-        .style(Style::default().fg(Color::Cyan))
-        .highlight_style(Style::default().fg(Color::Black).bg(Color::Magenta));
-    f.render_widget(tabs, left_chunks[0]);
+    let sel_idx = if matches!(app.left_panel_tab, crate::app::LeftPanelTab::Collections) { 0 } else { 1 };
+    f.render_widget(Tabs::new(titles).block(Block::default().borders(Borders::ALL).border_style(get_border_style(app.active_panel, ActivePanel::Collections))).select(sel_idx).style(Style::default().fg(Color::Cyan)).highlight_style(Style::default().fg(Color::Black).bg(Color::Magenta)), left_chunks[0]);
 
     let items: Vec<ListItem> = match app.left_panel_tab {
-        LeftPanelTab::Collections => app.collections.requests.iter().enumerate()
-            .map(|(i, r)| {
-                let style = if i == app.selected_idx && matches!(app.active_panel, ActivePanel::Collections) {
-                    Style::default().fg(Color::Black).bg(Color::Cyan)
-                } else { Style::default().fg(Color::Green) };
-                ListItem::new(format!(" > {}", r.name)).style(style)
-            }).collect(),
-        LeftPanelTab::History => app.collections.history.iter().enumerate()
-            .map(|(i, r)| {
-                let style = if i == app.selected_idx && matches!(app.active_panel, ActivePanel::Collections) {
-                    Style::default().fg(Color::Black).bg(Color::Cyan)
-                } else { Style::default().fg(Color::DarkGray) };
-                ListItem::new(format!(" [{}] {}", r.method, r.url)).style(style)
-            }).collect(),
+        crate::app::LeftPanelTab::Collections => app.collections.requests.iter().enumerate().map(|(i, r)| {
+            let style = if i == app.selected_idx && matches!(app.active_panel, ActivePanel::Collections) { Style::default().fg(Color::Black).bg(Color::Cyan) } else { Style::default().fg(Color::Green) };
+            ListItem::new(format!(" > {}", r.name)).style(style)
+        }).collect(),
+        crate::app::LeftPanelTab::History => app.collections.history.iter().enumerate().map(|(i, r)| {
+            let style = if i == app.selected_idx && matches!(app.active_panel, ActivePanel::Collections) { Style::default().fg(Color::Black).bg(Color::Cyan) } else { Style::default().fg(Color::DarkGray) };
+            ListItem::new(format!(" [{}] {}", r.method, r.url)).style(style)
+        }).collect(),
     };
     f.render_widget(List::new(items).block(Block::default().borders(Borders::ALL).border_style(get_border_style(app.active_panel, ActivePanel::Collections))), left_chunks[1]);
 
-    // 2. Editor Panel con Pestañas
-    let editor_root = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(3), // Barra de pestañas
-            Constraint::Min(0),    // Contenido
-        ])
-        .split(main_chunks[1]);
+    // 2. Editor Panel con Selector de Body Type
+    let editor_root = Layout::default().direction(Direction::Vertical).constraints([Constraint::Length(3), Constraint::Min(0)]).split(main_chunks[1]);
+    let tab_titles: Vec<Line> = app.tabs.iter().enumerate().map(|(i, t)| {
+        if i == app.active_tab { Line::from(vec![Span::styled(format!(" {} ", t.name), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))]) }
+        else { Line::from(vec![Span::styled(format!(" {} ", t.name), Style::default().fg(Color::DarkGray))]) }
+    }).collect();
+    f.render_widget(Tabs::new(tab_titles).block(Block::default().borders(Borders::ALL).title(" 📂 OPEN REQUESTS ").border_style(get_border_style(app.active_panel, ActivePanel::Editor))).select(app.active_tab).highlight_style(Style::default().fg(Color::Yellow)), editor_root[0]);
 
-    let tab_titles: Vec<Line> = app.tabs.iter().enumerate()
-        .map(|(i, t)| {
-            if i == app.active_tab {
-                Line::from(vec![Span::styled(format!(" {} ", t.name), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))])
-            } else {
-                Line::from(vec![Span::styled(format!(" {} ", t.name), Style::default().fg(Color::DarkGray))])
-            }
-        }).collect();
-    
-    let request_tabs = Tabs::new(tab_titles)
-        .block(Block::default().borders(Borders::ALL).title(" 📂 OPEN REQUESTS ").border_style(get_border_style(app.active_panel, ActivePanel::Editor)))
-        .select(app.active_tab)
-        .highlight_style(Style::default().fg(Color::Yellow));
-    f.render_widget(request_tabs, editor_root[0]);
+    let editor_area = Layout::default().direction(Direction::Vertical).constraints([
+        Constraint::Length(3), // URL
+        Constraint::Length(3), // Body Type Toggle
+        Constraint::Percentage(25), // Headers
+        Constraint::Min(0), // Body
+        Constraint::Length(3), // Attachment
+    ]).split(editor_root[1]);
 
-    let editor_area = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(3), 
-            Constraint::Percentage(30), 
-            Constraint::Min(0),
-        ])
-        .split(editor_root[1]);
+    app.url_rect = editor_area[0]; app.headers_rect = editor_area[2]; app.body_rect = editor_area[3]; app.attach_rect = editor_area[4];
 
-    app.url_rect = editor_area[0];
-    app.headers_rect = editor_area[1];
-    app.body_rect = editor_area[2];
+    let (input_mode, active_panel) = (app.input_mode, app.active_panel);
+    let tab = &mut app.tabs[app.active_tab];
 
-    let input_mode = app.input_mode;
-    let active_panel = app.active_panel;
-    let active_tab_idx = app.active_tab;
-    let tab = &mut app.tabs[active_tab_idx];
-    
+    // URL
     tab.url_area.set_block(Block::default().title(format!(" ⚡ {} URL ", tab.method)).borders(Borders::ALL).border_style(get_editor_border(active_panel, tab.editor_focus, EditorFocus::Url)));
-    if input_mode && tab.editor_focus == EditorFocus::Url { tab.url_area.set_cursor_style(Style::default().bg(Color::Yellow).fg(Color::Black)); }
-    else { tab.url_area.set_cursor_style(Style::default()); }
+    configure_cursor(tab, input_mode, EditorFocus::Url);
     f.render_widget(tab.url_area.widget(), editor_area[0]);
 
-    tab.headers_area.set_block(Block::default().title(" 📋 HEADERS ").borders(Borders::ALL).border_style(get_editor_border(active_panel, tab.editor_focus, EditorFocus::Headers)));
-    if input_mode && tab.editor_focus == EditorFocus::Headers { tab.headers_area.set_cursor_style(Style::default().bg(Color::Yellow).fg(Color::Black)); }
-    else { tab.headers_area.set_cursor_style(Style::default()); }
-    f.render_widget(tab.headers_area.widget(), editor_area[1]);
+    // Body Type Selector
+    let bt_titles = vec![" JSON ", " TEXT ", " FORM (Multipart) "];
+    let bt_idx = match tab.body_type { BodyType::Json => 0, BodyType::Text => 1, BodyType::Form => 2 };
+    let bt_tabs = Tabs::new(bt_titles)
+        .block(Block::default().title(" ⚙️ BODY TYPE ").borders(Borders::ALL).border_style(Style::default().fg(Color::DarkGray)))
+        .select(bt_idx)
+        .highlight_style(Style::default().fg(Color::Black).bg(Color::Cyan));
+    f.render_widget(bt_tabs, editor_area[1]);
 
+    // Headers
+    tab.headers_area.set_block(Block::default().title(" 📋 HEADERS ").borders(Borders::ALL).border_style(get_editor_border(active_panel, tab.editor_focus, EditorFocus::Headers)));
+    configure_cursor(tab, input_mode, EditorFocus::Headers);
+    f.render_widget(tab.headers_area.widget(), editor_area[2]);
+
+    // Body
     tab.body_area.set_block(Block::default().title(" 📦 BODY ").borders(Borders::ALL).border_style(get_editor_border(active_panel, tab.editor_focus, EditorFocus::Body)));
-    if input_mode && tab.editor_focus == EditorFocus::Body { tab.body_area.set_cursor_style(Style::default().bg(Color::Yellow).fg(Color::Black)); }
-    else { tab.body_area.set_cursor_style(Style::default()); }
-    f.render_widget(tab.body_area.widget(), editor_area[2]);
+    configure_cursor(tab, input_mode, EditorFocus::Body);
+    f.render_widget(tab.body_area.widget(), editor_area[3]);
+
+    // Attachment
+    let att_style = if tab.editor_focus == EditorFocus::Attachment { Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD) } else { Style::default().fg(Color::Cyan) };
+    let att_content = if tab.file_path.is_empty() { "Press ENTER to browse files...".to_string() } else { format!("📎 {}", tab.file_path) };
+    f.render_widget(Paragraph::new(att_content).style(att_style).block(Block::default().title(" 🖇 ATTACHMENT ").borders(Borders::ALL).border_style(att_style)), editor_area[4]);
 
     // 3. Response & AI
-    let right_chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
-        .split(main_chunks[2]);
-
+    let right_chunks = Layout::default().direction(Direction::Vertical).constraints([Constraint::Percentage(60), Constraint::Percentage(40)]).split(main_chunks[2]);
     let response_text = highlight_json(&tab.response);
-    
-    f.render_widget(
-        Paragraph::new(response_text)
-            .block(Block::default().title(" 📡 RESPONSE ").borders(Borders::ALL).border_style(get_border_style(active_panel, ActivePanel::Response)))
-            .scroll((tab.response_scroll, 0))
-            .wrap(Wrap { trim: false }), 
-        right_chunks[0]
-    );
-
+    f.render_widget(Paragraph::new(response_text).block(Block::default().title(" 📡 RESPONSE ").borders(Borders::ALL).border_style(get_border_style(active_panel, ActivePanel::Response))).scroll((tab.response_scroll, 0)).wrap(Wrap { trim: false }), right_chunks[0]);
     f.render_widget(Paragraph::new(app.ai_response.as_str()).style(Style::default().fg(Color::Magenta)).block(Block::default().title(" 🧠 AI AGENT ").borders(Borders::ALL).border_style(get_border_style(active_panel, ActivePanel::AI))).wrap(Wrap { trim: true }), right_chunks[1]);
 
     // Footer
-    let footer_chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Min(0), Constraint::Length(70)])
-        .split(chunks[2]);
-
-    let footer_text = " [H] History | [F] Focus | [I] Insert | [C] Copy | [S] Save ";
+    let footer_chunks = Layout::default().direction(Direction::Horizontal).constraints([Constraint::Min(0), Constraint::Length(70)]).split(chunks[2]);
+    let footer_text = " [B] Body Type | [T] Tree Mode | [N] Tab | [F] Focus | [Enter] Run ";
     f.render_widget(Paragraph::new(footer_text).style(Style::default().fg(Color::DarkGray)).block(Block::default().borders(Borders::TOP).border_style(Style::default().fg(Color::Magenta))), footer_chunks[0]);
 
     let sys_metrics = Line::from(vec![
@@ -165,34 +124,51 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         Span::styled(format!(" APP: {:.1}% {}MB ", app.proc_cpu, app.proc_mem), Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
     ]);
     f.render_widget(Paragraph::new(sys_metrics).alignment(Alignment::Right).block(Block::default().borders(Borders::TOP).border_style(Style::default().fg(Color::Magenta))), footer_chunks[1]);
+
+    // MODAL: File Picker
+    if app.show_file_picker {
+        let area = centered_rect(60, 60, f.size());
+        f.render_widget(Clear, area);
+        let items: Vec<ListItem> = app.file_entries.iter().enumerate().map(|(i, fi)| {
+            let style = if i == app.selected_file_idx { Style::default().fg(Color::Black).bg(Color::Yellow) } else { Style::default().fg(Color::White) };
+            ListItem::new(fi.as_str()).style(style)
+        }).collect();
+        f.render_widget(List::new(items).block(Block::default().title(" 📁 SELECT FILE ").borders(Borders::ALL).border_style(Style::default().fg(Color::Yellow))), area);
+    }
 }
 
-fn highlight_json(text: &str) -> Text {
+fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+    let popup_layout = Layout::default().direction(Direction::Vertical).constraints([Constraint::Percentage((100 - percent_y) / 2), Constraint::Percentage(percent_y), Constraint::Percentage((100 - percent_y) / 2)].as_ref()).split(r);
+    Layout::default().direction(Direction::Horizontal).constraints([Constraint::Percentage((100 - percent_x) / 2), Constraint::Percentage(percent_x), Constraint::Percentage((100 - percent_x) / 2)].as_ref()).split(popup_layout[1])[1]
+}
+
+fn highlight_json(text: &str) -> Text<'_> {
     let mut lines = Vec::new();
     for line in text.lines() {
         let mut spans = Vec::new();
-        if line.contains("STATUS:") {
-            spans.push(Span::styled(line, Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)));
-        } else if line.trim().starts_with('\"') && line.contains(':') {
-            // Es una clave JSON
+        if line.contains("STATUS:") { spans.push(Span::styled(line, Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))); }
+        else if line.trim().starts_with('\"') && line.contains(':') {
             let parts: Vec<&str> = line.splitn(2, ':').collect();
             spans.push(Span::styled(parts[0], Style::default().fg(Color::LightBlue)));
             spans.push(Span::styled(":", Style::default().fg(Color::White)));
-            if parts.len() > 1 {
-                spans.push(Span::styled(parts[1], Style::default().fg(Color::Yellow)));
-            }
-        } else {
-            spans.push(Span::styled(line, Style::default().fg(Color::Gray)));
-        }
+            if parts.len() > 1 { spans.push(Span::styled(parts[1], Style::default().fg(Color::LightYellow))); }
+        } else if line.contains('{') || line.contains('}') || line.contains('[') || line.contains(']') {
+            spans.push(Span::styled(line, Style::default().fg(Color::Magenta)));
+        } else { spans.push(Span::styled(line, Style::default().fg(Color::Gray))); }
         lines.push(Line::from(spans));
     }
     Text::from(lines)
 }
 
+fn configure_cursor(tab: &mut crate::app::RequestTab, input_mode: bool, focus: EditorFocus) {
+    let area = match focus { EditorFocus::Url => &mut tab.url_area, EditorFocus::Headers => &mut tab.headers_area, EditorFocus::Body => &mut tab.body_area, _ => return };
+    if input_mode && tab.editor_focus == focus { area.set_cursor_style(Style::default().bg(Color::Yellow).fg(Color::Black)); }
+    else { area.set_cursor_style(Style::default()); }
+}
+
 fn get_editor_border(active_panel: ActivePanel, current_focus: EditorFocus, target_focus: EditorFocus) -> Style {
-    if matches!(active_panel, ActivePanel::Editor) && current_focus == target_focus {
-        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
-    } else { Style::default().fg(Color::Cyan) }
+    if matches!(active_panel, ActivePanel::Editor) && current_focus == target_focus { Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD) }
+    else { Style::default().fg(Color::Cyan) }
 }
 
 fn get_border_style(active: ActivePanel, current: ActivePanel) -> Style {
