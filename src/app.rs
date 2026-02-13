@@ -150,14 +150,12 @@ impl<'a> App<'a> {
     pub fn handle_key(&mut self, key: KeyEvent) {
         if self.show_rename_input {
             match key.code {
-                KeyCode::Esc => self.show_rename_input = false,
+                KeyCode::Esc => { self.show_rename_input = false; }
                 KeyCode::Enter => {
                     let new_name = self.rename_input.lines()[0].trim().to_string();
                     if !new_name.is_empty() && matches!(self.left_panel_tab, LeftPanelTab::Collections) {
                         if let Some(req) = self.collections.requests.get(self.selected_idx).cloned() {
-                            // Borrar archivo viejo
                             let _ = self.collections.delete_request(self.selected_idx);
-                            // Crear nuevo con nombre actualizado
                             let mut updated_req = req;
                             updated_req.name = new_name;
                             let _ = self.collections.save_request(&updated_req);
@@ -169,19 +167,19 @@ impl<'a> App<'a> {
                 }
                 _ => { self.rename_input.input(key); }
             }
-            return;
+            return; // Bloqueo total de comandos globales
         }
         if self.show_swagger_input {
             match key.code {
-                KeyCode::Esc => self.show_swagger_input = false,
+                KeyCode::Esc => { self.show_swagger_input = false; }
                 KeyCode::Enter => self.import_swagger(),
                 _ => { self.swagger_input.input(key); }
             }
-            return;
+            return; // Bloqueo total de comandos globales
         }
         if self.show_key_input {
             match key.code {
-                KeyCode::Esc => self.show_key_input = false,
+                KeyCode::Esc => { self.show_key_input = false; }
                 KeyCode::Enter => {
                     let key_str = self.key_input.lines()[0].trim().to_string();
                     if !key_str.is_empty() {
@@ -193,7 +191,7 @@ impl<'a> App<'a> {
                 }
                 _ => { self.key_input.input(key); }
             }
-            return;
+            return; // Bloqueo total de comandos globales
         }
         if self.show_file_picker {
             match key.code {
