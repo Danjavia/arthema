@@ -2,20 +2,23 @@ use serde_json::json;
 use reqwest::Client;
 
 pub async fn get_ai_suggestion(prompt: &str) -> String {
-    let api_key = "AIzaSyCFAUvm0c4jdJ8Pl-xB6S7eGEEjFs40b0c";
+    let api_key = std::env::var("GEMINI_API_KEY").unwrap_or_default();
+    if api_key.is_empty() { return "ERROR: GEMINI_API_KEY not found in environment. Please set it or add it to config.".to_string(); }
     let system_prompt = "You are Arthema AI. Suggest ONE cool public API URL based on this hint: '{}'. Return ONLY the URL string.";
     call_gemini(api_key, system_prompt, prompt).await
 }
 
 pub async fn explain_response(response: &str) -> String {
-    let api_key = "AIzaSyCFAUvm0c4jdJ8Pl-xB6S7eGEEjFs40b0c";
+    let api_key = std::env::var("GEMINI_API_KEY").unwrap_or_default();
+    if api_key.is_empty() { return "ERROR: GEMINI_API_KEY not found in environment".to_string(); }
     let truncated_res = if response.len() > 3000 { &response[..3000] } else { response };
     let system_prompt = "You are Arthema AI. Analyze this API response technicaly and concisely.";
     call_gemini(api_key, system_prompt, truncated_res).await
 }
 
 pub async fn fix_error(method: &str, url: &str, headers: &str, body: &str, error: &str) -> String {
-    let api_key = "AIzaSyCFAUvm0c4jdJ8Pl-xB6S7eGEEjFs40b0c";
+    let api_key = std::env::var("GEMINI_API_KEY").unwrap_or_default();
+    if api_key.is_empty() { return "ERROR: GEMINI_API_KEY not found in environment".to_string(); }
     let prompt = format!(
         "The following API request failed.\nMethod: {}\nURL: {}\nHeaders: {}\nBody: {}\nError Received: {}\n\nSuggest a fix for the headers or body. Be extremely technical and concise.",
         method, url, headers, body, error
