@@ -4,6 +4,15 @@
     "url": "https://jsonplaceholder.typicode.com/posts",
     "method": "GET",
     "headers": {
+      "Content-Type": "multipart/form-data"
+    },
+    "body": "{\n  \"title\": \"Arthema Request\"\n}"
+  },
+  {
+    "name": "https://jsonplaceholder.typicode.com/posts",
+    "url": "https://jsonplaceholder.typicode.com/posts",
+    "method": "GET",
+    "headers": {
       "Content-Type": "application/json"
     },
     "body": "{\n  \"title\": \"Arthema\"\n}"

@@ -13,9 +13,9 @@ Arthema es una alternativa rápida, liviana y futurista a Postman/Bruno, escrita
 | `m` / `M` | Cambiar método HTTP (GET, POST, etc.) / `M` para retroceder |
 | `b` | Ciclar tipo de cuerpo (**JSON**, **TEXT**, **FORM**) |
 | `h` | Alternar panel izquierdo entre **Collections** e **History** |
-| `d` | **Eliminar** el elemento seleccionado en Collections o History |
+| `d` | **Eliminar Dinámico:** Borra Colección/Historial, Adjunto o la **Pestaña actual** |
 | `n` | Siguiente pestaña de petición |
-| `s` | Guardar petición actual en Colecciones |
+| `s` | Guardar pestaña actual en Colecciones |
 | `c` | Copiar contenido de la sección activa al portapapeles de Mac |
 | `q` | Salir de Arthema |
 
@@ -35,12 +35,14 @@ Arthema es una alternativa rápida, liviana y futurista a Postman/Bruno, escrita
 | `Ctrl + V` | Pegar texto desde macOS |
 | `Ctrl + Z` | Deshacer último cambio |
 | `Ctrl + A` | Seleccionar todo el texto del campo |
-| `Enter` | Ejecutar petición (solo si el foco está en la **URL**) |
+| `Ctrl + T` | Abrir nueva pestaña |
+| `Ctrl + W` | Cerrar pestaña actual |
 
 ## 🖇 Manejo de Archivos (Multipart)
 
 1. Usa `f` hasta llegar al panel de **Attachment**.
 2. Presiona `Enter` para abrir el explorador de archivos.
-3. Navega con `↑` / `↓`.
+3. Navega con `↑` / `↓` (soporta scroll).
 4. Selecciona `..` para subir de nivel o una carpeta para entrar.
 5. Presiona `Enter` sobre un archivo para adjuntarlo.
+6. Presiona `d` sobre el campo Attachment para quitar el archivo.

@@ -43,7 +43,7 @@ impl<'a> RequestTab<'a> {
     pub fn new(name: String) -> Self {
         let mut url_area = TextArea::default(); url_area.insert_str("https://jsonplaceholder.typicode.com/posts");
         let mut headers_area = TextArea::default(); headers_area.insert_str("Content-Type: application/json");
-        let mut body_area = TextArea::default(); body_area.insert_str("{\n  \"title\": \"Arthema\"\n}");
+        let mut body_area = TextArea::default(); body_area.insert_str("{\n  \"title\": \"Arthema Request\"\n}");
         Self {
             name, url_area, headers_area, body_area,
             file_path: "".to_string(), method: "GET".to_string(),
@@ -66,12 +66,10 @@ pub struct App<'a> {
     pub collections: CollectionManager,
     pub selected_idx: usize,
     pub url_rect: Rect, pub headers_rect: Rect, pub body_rect: Rect, pub attach_rect: Rect,
-    // File Picker con Estado para Scroll
     pub show_file_picker: bool,
     pub current_dir: PathBuf,
     pub file_entries: Vec<String>,
     pub file_picker_state: ListState,
-    // Métricas
     pub sys: System, pub cpu_usage: f32, pub mem_total: u64, pub mem_used: u64,
     pub proc_cpu: f32, pub proc_mem: u64, pub battery_level: String, pub last_sys_update: Instant,
 }
@@ -82,12 +80,12 @@ impl<'a> App<'a> {
         let mut sys = System::new_all(); sys.refresh_all();
         App {
             tabs: vec![RequestTab::new("Req 1".to_string())], active_tab: 0,
-            ai_response: "ARTHEMA READY".to_string(),
+            ai_response: "ARTHEMA SYSTEM READY".to_string(),
             active_panel: ActivePanel::Editor, left_panel_tab: LeftPanelTab::Collections,
             input_mode: false, is_ai_loading: false, tx, rx, collections: CollectionManager::new(),
             selected_idx: 0,
             url_rect: Rect::default(), headers_rect: Rect::default(), body_rect: Rect::default(), attach_rect: Rect::default(),
-            show_file_picker: false, current_dir: std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/")), file_entries: Vec::new(), file_picker_state: ListState::default(),
+            show_file_picker: false, current_dir: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")), file_entries: Vec::new(), file_picker_state: ListState::default(),
             sys, cpu_usage: 0.0, mem_total: 0, mem_used: 0, proc_cpu: 0.0, proc_mem: 0,
             battery_level: "N/A".to_string(), last_sys_update: Instant::now(),
         }
@@ -125,20 +123,8 @@ impl<'a> App<'a> {
     pub fn handle_key(&mut self, key: KeyEvent) {
         if self.show_file_picker {
             match key.code {
-                KeyCode::Up => {
-                    let i = match self.file_picker_state.selected() {
-                        Some(i) => if i > 0 { i - 1 } else { self.file_entries.len() - 1 },
-                        None => 0,
-                    };
-                    self.file_picker_state.select(Some(i));
-                }
-                KeyCode::Down => {
-                    let i = match self.file_picker_state.selected() {
-                        Some(i) => if i < self.file_entries.len() - 1 { i + 1 } else { 0 },
-                        None => 0,
-                    };
-                    self.file_picker_state.select(Some(i));
-                }
+                KeyCode::Up => { let i = match self.file_picker_state.selected() { Some(i) => if i > 0 { i - 1 } else { self.file_entries.len() - 1 }, None => 0 }; self.file_picker_state.select(Some(i)); }
+                KeyCode::Down => { let i = match self.file_picker_state.selected() { Some(i) => if i < self.file_entries.len() - 1 { i + 1 } else { 0 }, None => 0 }; self.file_picker_state.select(Some(i)); }
                 KeyCode::Enter => {
                     if let Some(i) = self.file_picker_state.selected() {
                         let entry = self.file_entries[i].clone();
@@ -161,6 +147,7 @@ impl<'a> App<'a> {
                 KeyCode::Char('v') => { self.paste_from_pbpaste(); return; }
                 KeyCode::Char('z') => { self.undo_active(); return; }
                 KeyCode::Char('t') => { self.new_tab(); return; }
+                KeyCode::Char('w') => { self.handle_delete(); return; } // Ctrl+W también borra pestaña
                 _ => {}
             }
         }
@@ -172,7 +159,7 @@ impl<'a> App<'a> {
                 EditorFocus::Url => { tab.url_area.input(key); }
                 EditorFocus::Headers => { tab.headers_area.input(key); }
                 EditorFocus::Body => { tab.body_area.input(key); }
-                EditorFocus::Attachment => { if key.code == KeyCode::Enter { self.open_file_picker(); } }
+                _ => {}
             }
             return;
         }
@@ -207,9 +194,19 @@ impl<'a> App<'a> {
                 self.ai_response = "SYSTEM: Item deleted.".to_string();
             },
             ActivePanel::Editor => {
-                if self.current_tab().editor_focus == EditorFocus::Attachment {
+                // Si estamos enfocando el attachment y tiene algo, lo borramos
+                if self.current_tab().editor_focus == EditorFocus::Attachment && !self.current_tab().file_path.is_empty() {
                     self.current_tab_mut().file_path.clear();
-                    self.ai_response = "SYSTEM: Attachment removed.".to_string();
+                    self.ai_response = "SYSTEM: Attachment cleared.".to_string();
+                } else {
+                    // Si no, borramos la pestaña actual
+                    if self.tabs.len() > 1 {
+                        self.tabs.remove(self.active_tab);
+                        self.active_tab = self.active_tab.saturating_sub(1);
+                        self.ai_response = "SYSTEM: Tab closed.".to_string();
+                    } else {
+                        self.ai_response = "SYSTEM: Cannot close the last tab.".to_string();
+                    }
                 }
             },
             _ => {}
@@ -293,10 +290,10 @@ impl<'a> App<'a> {
     pub fn next_panel(&mut self) { self.active_panel = match self.active_panel { ActivePanel::Collections => ActivePanel::Editor, ActivePanel::Editor => ActivePanel::Response, ActivePanel::Response => ActivePanel::AI, _ => ActivePanel::Collections }; }
 
     fn save_current_request(&mut self) {
-        let (url, method, h_lines, body) = { let t = self.current_tab(); (t.url_area.lines()[0].clone(), t.method.clone(), t.headers_area.lines().iter().map(|s| s.to_string()).collect::<Vec<_>>(), t.body_area.lines().join("\n")) };
+        let t = self.current_tab();
         let mut hs = HashMap::new();
-        for l in h_lines { let p: Vec<&str> = l.splitn(2, ':').collect(); if p.len() == 2 { hs.insert(p[0].trim().to_string(), p[1].trim().to_string()); } }
-        let new_req = ApiRequest { name: format!("Req_{}", self.collections.requests.len() + 1), url, method, headers: hs, body: Some(body) };
+        for l in t.headers_area.lines() { let pts: Vec<&str> = l.splitn(2, ':').collect(); if pts.len() == 2 { hs.insert(pts[0].trim().to_string(), pts[1].trim().to_string()); } }
+        let new_req = ApiRequest { name: format!("Req_{}", self.collections.requests.len() + 1), url: t.url_area.lines()[0].clone(), method: t.method.clone(), headers: hs, body: Some(t.body_area.lines().join("\n")) };
         if self.collections.save_request(&new_req).is_ok() { let _ = self.collections.load_all(); self.ai_response = "SYSTEM: saved.".to_string(); }
     }
 
