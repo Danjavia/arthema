@@ -263,6 +263,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         f.render_widget(
             Paragraph::new(help_text)
                 .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(Color::Magenta)).title(" [SYSTEM OVERLAY] "))
+                .scroll((app.help_scroll, 0))
                 .wrap(Wrap { trim: false }),
             area
         );

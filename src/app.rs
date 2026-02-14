@@ -96,6 +96,7 @@ pub struct App<'a> {
     pub show_rename_input: bool,
     pub show_import_menu: bool,
     pub show_help: bool,
+    pub help_scroll: u16,
     pub current_import_type: ImportType,
     pub selected_idx: usize,
     pub url_rect: Rect, pub headers_rect: Rect, pub body_rect: Rect, pub attach_rect: Rect,
@@ -126,6 +127,7 @@ impl<'a> App<'a> {
             show_rename_input: false,
             show_import_menu: false,
             show_help: false,
+            help_scroll: 0,
             current_import_type: ImportType::None,
             selected_idx: 0,
             url_rect: Rect::default(), headers_rect: Rect::default(), body_rect: Rect::default(), attach_rect: Rect::default(),
@@ -196,8 +198,11 @@ impl<'a> App<'a> {
 
     pub fn handle_key(&mut self, key: KeyEvent) {
         if self.show_help {
-            if let KeyCode::Esc | KeyCode::Char('?') = key.code {
-                self.show_help = false;
+            match key.code {
+                KeyCode::Esc | KeyCode::Char('?') => { self.show_help = false; }
+                KeyCode::Up => { self.help_scroll = self.help_scroll.saturating_sub(1); }
+                KeyCode::Down => { self.help_scroll = self.help_scroll.saturating_add(1); }
+                _ => {}
             }
             return;
         }
