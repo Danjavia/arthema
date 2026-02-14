@@ -1,5 +1,13 @@
 [
   {
+    "name": "https://api.parqio.com/api/v1/auth/sms-token-login",
+    "url": "https://api.parqio.com/api/v1/auth/sms-token-login",
+    "method": "POST",
+    "headers": {},
+    "body": "\"token\": \"195487\",\n    \"phone\": \"+573167808694\"",
+    "group": null
+  },
+  {
     "name": "https://jsonplaceholder.typicode.com/posts",
     "url": "https://jsonplaceholder.typicode.com/posts",
     "method": "GET",
