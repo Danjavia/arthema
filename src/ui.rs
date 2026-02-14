@@ -133,7 +133,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         .constraints([Constraint::Min(0), Constraint::Length(75)])
         .split(chunks[1]);
 
-    let footer_text = " [H] Hist | [N] Tab | [F] Foc | [^P] Curl | [^I] Import | [R] Ren | [?] Help | [K] API ";
+    let footer_text = " [?] Help | [^D] Donate (arthema.co) ";
     f.render_widget(Paragraph::new(footer_text).style(Style::default().fg(Color::DarkGray)).block(Block::default().borders(Borders::TOP).border_style(Style::default().fg(Color::Magenta))), footer_chunks[0]);
 
     // Dashboard de Sistema - ARTHEMA alineado a la derecha
@@ -235,6 +235,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             ("⚡ SYSTEM", vec![
                 ("Ctrl+P", "Paste and Parse cURL from clipboard"),
                 ("Ctrl+I", "Open Mass Import Menu (Swagger, Postman, Bruno)"),
+                ("Ctrl+D", "Support Arthema: Open donation page (arthema.co)"),
                 ("o", "Open response or attachment in System Viewer"),
                 ("k", "Configure Gemini API Key"),
                 ("?", "Toggle this Help Manual"),

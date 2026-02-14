@@ -305,6 +305,11 @@ impl<'a> App<'a> {
                 KeyCode::Char('v') => { self.paste_from_pbpaste(); return; }
                 KeyCode::Char('p') => { self.import_curl(); return; }
                 KeyCode::Char('i') => { self.input_mode = false; self.show_import_menu = true; return; }
+                KeyCode::Char('d') => { 
+                    let _ = Command::new("open").arg("https://arthema.co").spawn();
+                    self.ai_response = "SYSTEM: Opening donation page... Thank you for your support! 🦾".to_string();
+                    return; 
+                }
                 KeyCode::Char('z') => { self.undo_active(); return; }
                 KeyCode::Char('t') => { self.new_tab(); return; }
                 KeyCode::Char('w') => { self.handle_delete(); return; } // Ctrl+W también borra pestaña
