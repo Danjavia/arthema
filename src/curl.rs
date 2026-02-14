@@ -75,3 +75,34 @@ pub fn parse_curl(curl: &str) -> Option<ParsedCurl> {
         body: if body_parts.is_empty() { None } else { Some(body_parts.join("")) },
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_simple_get() {
+        let curl = "curl https://api.example.com/data";
+        let parsed = parse_curl(curl).unwrap();
+        assert_eq!(parsed.method, "GET");
+        assert_eq!(parsed.url, "https://api.example.com/data");
+    }
+
+    #[test]
+    fn test_parse_post_with_headers_and_body() {
+        let curl = "curl -X POST https://api.com -H 'Content-Type: application/json' -d '{\"key\":\"val\"}'";
+        let parsed = parse_curl(curl).unwrap();
+        assert_eq!(parsed.method, "POST");
+        assert_eq!(parsed.headers.get("Content-Type").unwrap(), "application/json");
+        assert_eq!(parsed.body.unwrap(), "{\"key\":\"val\"}");
+    }
+
+    #[test]
+    fn test_parse_multiline_curl() {
+        let curl = "curl -X PUT https://api.com \\\n -H 'Authorization: Bearer 123' \\\n -d 'data'";
+        let parsed = parse_curl(curl).unwrap();
+        assert_eq!(parsed.method, "PUT");
+        assert_eq!(parsed.headers.get("Authorization").unwrap(), "Bearer 123");
+        assert_eq!(parsed.body.unwrap(), "data");
+    }
+}

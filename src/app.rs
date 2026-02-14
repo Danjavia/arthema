@@ -13,7 +13,7 @@ use sysinfo::{System, Pid};
 use std::fs;
 use std::path::{PathBuf};
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum ActivePanel { Collections, Editor, Response, AI }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -59,6 +59,7 @@ impl<'a> RequestTab<'a> {
     }
 }
 
+#[derive(Debug)]
 pub enum AppEvent {
     ApiResponse(String, Option<Vec<u8>>),
     AiMessage(String),
@@ -666,5 +667,78 @@ impl<'a> App<'a> {
             if let Ok(output) = Command::new("pmset").arg("-g").arg("batt").output() { let out = String::from_utf8_lossy(&output.stdout); if let Some(line) = out.lines().nth(1) { if let Some(perc) = line.split('\t').nth(1) { self.battery_level = perc.split(';').next().unwrap_or("N/A").to_string(); } } }
             self.last_sys_update = Instant::now();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, KeyEventKind, KeyEventState};
+
+    fn mock_key(code: KeyCode) -> KeyEvent {
+        KeyEvent {
+            code,
+            modifiers: KeyModifiers::empty(),
+            kind: KeyEventKind::Press,
+            state: KeyEventState::empty(),
+        }
+    }
+
+    #[test]
+    fn test_is_input_active_protection() {
+        let mut app = App::new();
+        assert!(!app.is_input_active());
+        
+        app.input_mode = true;
+        assert!(app.is_input_active());
+        
+        app.input_mode = false;
+        app.show_rename_input = true;
+        assert!(app.is_input_active());
+    }
+
+    #[test]
+    fn test_shortcut_insert_mode() {
+        let mut app = App::new();
+        assert!(!app.input_mode);
+        
+        app.handle_key(mock_key(KeyCode::Char('i')));
+        assert!(app.input_mode);
+        
+        app.handle_key(mock_key(KeyCode::Esc));
+        assert!(!app.input_mode);
+    }
+
+    #[test]
+    fn test_shortcut_panels_tab() {
+        let mut app = App::new();
+        assert_eq!(app.active_panel, ActivePanel::Editor);
+        
+        app.handle_key(mock_key(KeyCode::Tab));
+        assert_eq!(app.active_panel, ActivePanel::Response);
+        
+        app.handle_key(mock_key(KeyCode::Tab));
+        assert_eq!(app.active_panel, ActivePanel::AI);
+        
+        app.handle_key(mock_key(KeyCode::Tab));
+        assert_eq!(app.active_panel, ActivePanel::Collections);
+    }
+
+    #[test]
+    fn test_shortcut_modals_activation() {
+        let mut app = App::new();
+        
+        // Test API Key modal
+        app.handle_key(mock_key(KeyCode::Char('k')));
+        assert!(app.show_key_input);
+        assert!(!app.input_mode);
+        app.handle_key(mock_key(KeyCode::Esc));
+        assert!(!app.show_key_input);
+
+        // Test Swagger modal
+        app.handle_key(mock_key(KeyCode::Char('g')));
+        assert!(app.show_swagger_input);
+        app.handle_key(mock_key(KeyCode::Esc));
+        assert!(!app.show_swagger_input);
     }
 }

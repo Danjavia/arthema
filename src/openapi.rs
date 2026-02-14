@@ -45,3 +45,31 @@ pub fn parse_swagger(content: &str) -> Vec<ApiRequest> {
 
     requests
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_minimal_swagger() {
+        let json = r#"{
+            "openapi": "3.0.0",
+            "info": {"title": "Test", "version": "1.0"},
+            "paths": {
+                "/users": {
+                    "get": {
+                        "summary": "List Users",
+                        "tags": ["Admin"],
+                        "responses": {
+                            "200": { "description": "OK" }
+                        }
+                    }
+                }
+            }
+        }"#;
+        let reqs = parse_swagger(json);
+        assert_eq!(reqs.len(), 1);
+        assert_eq!(reqs[0].name, "List Users");
+        assert_eq!(reqs[0].group.as_ref().unwrap(), "Admin");
+    }
+}
