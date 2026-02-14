@@ -59,7 +59,7 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App<'_>) -> i
             match event::read()? {
                 Event::Key(key) => {
                     if let KeyCode::Char('q') = key.code {
-                        if !app.input_mode { return Ok(()); }
+                        if !app.is_input_active() { return Ok(()); }
                     }
                     app.handle_key(key);
                 }

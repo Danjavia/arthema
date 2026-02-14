@@ -128,6 +128,10 @@ impl<'a> App<'a> {
     pub fn current_tab(&self) -> &RequestTab<'a> { &self.tabs[self.active_tab] }
     pub fn current_tab_mut(&mut self) -> &mut RequestTab<'a> { &mut self.tabs[self.active_tab] }
 
+    pub fn is_input_active(&self) -> bool {
+        self.input_mode || self.show_rename_input || self.show_swagger_input || self.show_key_input || self.show_file_picker
+    }
+
     pub fn get_visible_items(&self) -> Vec<CollectionItem> {
         let mut items = Vec::new();
         let mut groups: Vec<String> = self.collections.requests.iter()
