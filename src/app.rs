@@ -72,6 +72,9 @@ pub enum CollectionItem {
     Request(usize),
 }
 
+#[derive(Clone, PartialEq, Debug)]
+pub enum ImportType { None, Postman, Bruno }
+
 pub struct App<'a> {
     pub tabs: Vec<RequestTab<'a>>,
     pub active_tab: usize,
@@ -91,6 +94,8 @@ pub struct App<'a> {
     pub show_swagger_input: bool,
     pub rename_input: TextArea<'a>,
     pub show_rename_input: bool,
+    pub show_import_menu: bool,
+    pub current_import_type: ImportType,
     pub selected_idx: usize,
     pub url_rect: Rect, pub headers_rect: Rect, pub body_rect: Rect, pub attach_rect: Rect,
     pub show_file_picker: bool,
@@ -118,6 +123,8 @@ impl<'a> App<'a> {
             show_swagger_input: false,
             rename_input: TextArea::default(),
             show_rename_input: false,
+            show_import_menu: false,
+            current_import_type: ImportType::None,
             selected_idx: 0,
             url_rect: Rect::default(), headers_rect: Rect::default(), body_rect: Rect::default(), attach_rect: Rect::default(),
             show_file_picker: false, current_dir: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")), file_entries: Vec::new(), file_picker_state: ListState::default(),
@@ -186,6 +193,16 @@ impl<'a> App<'a> {
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) {
+        if self.show_import_menu {
+            match key.code {
+                KeyCode::Esc => self.show_import_menu = false,
+                KeyCode::Char('1') => { self.show_import_menu = false; self.show_swagger_input = true; }
+                KeyCode::Char('2') => { self.show_import_menu = false; self.current_import_type = ImportType::Postman; self.open_file_picker(); }
+                KeyCode::Char('3') => { self.show_import_menu = false; self.current_import_type = ImportType::Bruno; self.open_file_picker(); }
+                _ => {}
+            }
+            return;
+        }
         if self.show_rename_input {
             match key.code {
                 KeyCode::Esc => { self.show_rename_input = false; }
@@ -244,8 +261,28 @@ impl<'a> App<'a> {
                         if entry == ".." { self.current_dir.pop(); self.refresh_file_entries(); }
                         else {
                             let path = self.current_dir.join(&entry);
-                            if path.is_dir() { self.current_dir = path; self.refresh_file_entries(); }
-                            else { self.current_tab_mut().file_path = path.to_string_lossy().to_string(); self.show_file_picker = false; }
+                            if path.is_dir() {
+                                if matches!(self.current_import_type, ImportType::Bruno) {
+                                    // Importar carpeta de Bruno
+                                    let reqs = crate::bruno::parse_bruno_folder(&path);
+                                    let _ = self.tx.send(AppEvent::SwaggerImported(reqs));
+                                    self.show_file_picker = false;
+                                    self.current_import_type = ImportType::None;
+                                } else {
+                                    self.current_dir = path; self.refresh_file_entries();
+                                }
+                            } else {
+                                if matches!(self.current_import_type, ImportType::Postman) {
+                                    if let Ok(content) = fs::read_to_string(&path) {
+                                        let reqs = crate::postman::parse_postman(&content);
+                                        let _ = self.tx.send(AppEvent::SwaggerImported(reqs));
+                                    }
+                                    self.show_file_picker = false;
+                                    self.current_import_type = ImportType::None;
+                                } else {
+                                    self.current_tab_mut().file_path = path.to_string_lossy().to_string(); self.show_file_picker = false;
+                                }
+                            }
                         }
                     }
                 }
@@ -259,6 +296,7 @@ impl<'a> App<'a> {
                 KeyCode::Char('c') => { self.copy_to_system(); return; }
                 KeyCode::Char('v') => { self.paste_from_pbpaste(); return; }
                 KeyCode::Char('p') => { self.import_curl(); return; }
+                KeyCode::Char('i') => { self.input_mode = false; self.show_import_menu = true; return; }
                 KeyCode::Char('z') => { self.undo_active(); return; }
                 KeyCode::Char('t') => { self.new_tab(); return; }
                 KeyCode::Char('w') => { self.handle_delete(); return; } // Ctrl+W también borra pestaña

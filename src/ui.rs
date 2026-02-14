@@ -130,7 +130,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         .constraints([Constraint::Min(0), Constraint::Length(75)])
         .split(chunks[1]);
 
-    let footer_text = " [H] Hist | [N] Tab | [F] Foc | [^P] Curl | [G] Swagger | [R] Ren | [O] Open | [K] API ";
+    let footer_text = " [H] Hist | [N] Tab | [F] Foc | [^P] Curl | [^I] Import | [R] Ren | [O] Open | [K] API ";
     f.render_widget(Paragraph::new(footer_text).style(Style::default().fg(Color::DarkGray)).block(Block::default().borders(Borders::TOP).border_style(Style::default().fg(Color::Magenta))), footer_chunks[0]);
 
     // Dashboard de Sistema - ARTHEMA alineado a la derecha
@@ -179,6 +179,20 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         app.rename_input.set_block(Block::default().title(" ✏️ RENAME REQUEST (ENTER to save, ESC to cancel) ").borders(Borders::ALL).border_style(Style::default().fg(Color::Yellow)));
         app.rename_input.set_cursor_style(Style::default().bg(Color::Yellow).fg(Color::Black));
         f.render_widget(app.rename_input.widget(), area);
+    }
+
+    // MODAL: Import Menu
+    if app.show_import_menu {
+        let area = centered_rect(40, 20, f.size());
+        f.render_widget(Clear, area);
+        let content = vec![
+            Line::from(vec![Span::styled("[1]", Style::default().fg(Color::Yellow)), Span::raw(" Swagger URL")]),
+            Line::from(vec![Span::styled("[2]", Style::default().fg(Color::Yellow)), Span::raw(" Postman JSON File")]),
+            Line::from(vec![Span::styled("[3]", Style::default().fg(Color::Yellow)), Span::raw(" Bruno Project Folder")]),
+            Line::from(""),
+            Line::from(vec![Span::styled("ESC", Style::default().fg(Color::DarkGray)), Span::raw(" to cancel")]),
+        ];
+        f.render_widget(Paragraph::new(content).block(Block::default().title(" 📥 MASS IMPORT ").borders(Borders::ALL).border_style(Style::default().fg(Color::Cyan))), area);
     }
 }
 
