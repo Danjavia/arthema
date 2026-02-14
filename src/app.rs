@@ -99,7 +99,7 @@ pub struct App<'a> {
     pub help_scroll: u16,
     pub current_import_type: ImportType,
     pub selected_idx: usize,
-    pub url_rect: Rect, pub headers_rect: Rect, pub body_rect: Rect, pub attach_rect: Rect,
+    pub url_rect: Rect, pub headers_rect: Rect, pub body_rect: Rect, pub attach_rect: Rect, pub response_rect: Rect,
     pub show_file_picker: bool,
     pub current_dir: PathBuf,
     pub file_entries: Vec<String>,
@@ -130,7 +130,7 @@ impl<'a> App<'a> {
             help_scroll: 0,
             current_import_type: ImportType::None,
             selected_idx: 0,
-            url_rect: Rect::default(), headers_rect: Rect::default(), body_rect: Rect::default(), attach_rect: Rect::default(),
+            url_rect: Rect::default(), headers_rect: Rect::default(), body_rect: Rect::default(), attach_rect: Rect::default(), response_rect: Rect::default(),
             show_file_picker: false, current_dir: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")), file_entries: Vec::new(), file_picker_state: ListState::default(),
             sys, cpu_usage: 0.0, mem_total: 0, mem_used: 0, proc_cpu: 0.0, proc_mem: 0,
             battery_level: "N/A".to_string(), last_sys_update: Instant::now(),
@@ -172,27 +172,47 @@ impl<'a> App<'a> {
 
     pub fn handle_mouse(&mut self, mouse: MouseEvent, _w: u16, _h: u16) {
         let (x, y) = (mouse.column, mouse.row);
-        if let MouseEventKind::Down(_) = mouse.kind {
-            if self.url_rect.contains(ratatui::layout::Position { x, y }) {
-                self.active_panel = ActivePanel::Editor; self.current_tab_mut().editor_focus = EditorFocus::Url;
-                self.input_mode = true;
-                let rx = x.saturating_sub(self.url_rect.x + 1); let ry = y.saturating_sub(self.url_rect.y + 1);
-                self.current_tab_mut().url_area.move_cursor(CursorMove::Jump(ry, rx));
-            } else if self.headers_rect.contains(ratatui::layout::Position { x, y }) {
-                self.active_panel = ActivePanel::Editor; self.current_tab_mut().editor_focus = EditorFocus::Headers;
-                self.input_mode = true;
-                let rx = x.saturating_sub(self.headers_rect.x + 1); let ry = y.saturating_sub(self.headers_rect.y + 1);
-                self.current_tab_mut().headers_area.move_cursor(CursorMove::Jump(ry, rx));
-            } else if self.body_rect.contains(ratatui::layout::Position { x, y }) {
-                self.active_panel = ActivePanel::Editor; self.current_tab_mut().editor_focus = EditorFocus::Body;
-                self.input_mode = true;
-                let rx = x.saturating_sub(self.body_rect.x + 1); let ry = y.saturating_sub(self.body_rect.y + 1);
-                self.current_tab_mut().body_area.move_cursor(CursorMove::Jump(ry, rx));
-            } else if self.attach_rect.contains(ratatui::layout::Position { x, y }) {
-                self.active_panel = ActivePanel::Editor; self.current_tab_mut().editor_focus = EditorFocus::Attachment;
-                self.open_file_picker();
-            } else if x < self.url_rect.x { self.active_panel = ActivePanel::Collections; }
-            else if x > (self.url_rect.x + self.url_rect.width) { self.active_panel = ActivePanel::Response; }
+        match mouse.kind {
+            MouseEventKind::Down(_) => {
+                if self.url_rect.contains(ratatui::layout::Position { x, y }) {
+                    self.active_panel = ActivePanel::Editor; self.current_tab_mut().editor_focus = EditorFocus::Url;
+                    self.input_mode = true;
+                    let rx = x.saturating_sub(self.url_rect.x + 1); let ry = y.saturating_sub(self.url_rect.y + 1);
+                    self.current_tab_mut().url_area.move_cursor(CursorMove::Jump(ry, rx));
+                } else if self.headers_rect.contains(ratatui::layout::Position { x, y }) {
+                    self.active_panel = ActivePanel::Editor; self.current_tab_mut().editor_focus = EditorFocus::Headers;
+                    self.input_mode = true;
+                    let rx = x.saturating_sub(self.headers_rect.x + 1); let ry = y.saturating_sub(self.headers_rect.y + 1);
+                    self.current_tab_mut().headers_area.move_cursor(CursorMove::Jump(ry, rx));
+                } else if self.body_rect.contains(ratatui::layout::Position { x, y }) {
+                    self.active_panel = ActivePanel::Editor; self.current_tab_mut().editor_focus = EditorFocus::Body;
+                    self.input_mode = true;
+                    let rx = x.saturating_sub(self.body_rect.x + 1); let ry = y.saturating_sub(self.body_rect.y + 1);
+                    self.current_tab_mut().body_area.move_cursor(CursorMove::Jump(ry, rx));
+                } else if self.attach_rect.contains(ratatui::layout::Position { x, y }) {
+                    self.active_panel = ActivePanel::Editor; self.current_tab_mut().editor_focus = EditorFocus::Attachment;
+                    self.open_file_picker();
+                } else if self.response_rect.contains(ratatui::layout::Position { x, y }) {
+                    self.active_panel = ActivePanel::Response;
+                } else if x < self.url_rect.x { self.active_panel = ActivePanel::Collections; }
+            }
+            MouseEventKind::ScrollUp => {
+                if self.body_rect.contains(ratatui::layout::Position { x, y }) {
+                    self.current_tab_mut().body_area.input(KeyEvent::new(KeyCode::Up, KeyModifiers::empty()));
+                } else if self.response_rect.contains(ratatui::layout::Position { x, y }) {
+                    let t = self.current_tab_mut();
+                    t.response_scroll = t.response_scroll.saturating_sub(1);
+                }
+            }
+            MouseEventKind::ScrollDown => {
+                if self.body_rect.contains(ratatui::layout::Position { x, y }) {
+                    self.current_tab_mut().body_area.input(KeyEvent::new(KeyCode::Down, KeyModifiers::empty()));
+                } else if self.response_rect.contains(ratatui::layout::Position { x, y }) {
+                    let t = self.current_tab_mut();
+                    t.response_scroll = t.response_scroll.saturating_add(1);
+                }
+            }
+            _ => {}
         }
     }
 

@@ -116,6 +116,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 
     // 3. Response & AI
     let right_chunks = Layout::default().direction(Direction::Vertical).constraints([Constraint::Percentage(60), Constraint::Percentage(40)]).split(main_chunks[2]);
+    app.response_rect = right_chunks[0];
     
     let response_content = if let Some(bytes) = &tab.response_bytes {
         let preview = crate::img_preview::generate_hifi_preview(bytes, right_chunks[0].width.saturating_sub(4) as u32);
