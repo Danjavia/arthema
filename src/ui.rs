@@ -204,7 +204,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         f.render_widget(Clear, area);
         
         let mut help_text = Vec::new();
-        help_text.push(Line::from(vec![Span::styled(" ARTHEMA - NEURAL LINK SYSTEM MANUAL ", Style::default().fg(Color::Black).bg(Color::Magenta).add_modifier(Modifier::BOLD))]));
+        help_text.push(Line::from(vec![Span::styled(" ARTHEMA - SIMPLE TOOL FOR REQUESTS ", Style::default().fg(Color::Black).bg(Color::Magenta).add_modifier(Modifier::BOLD))]));
         help_text.push(Line::from(""));
 
         let categories = vec![
