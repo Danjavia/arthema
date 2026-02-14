@@ -95,6 +95,7 @@ pub struct App<'a> {
     pub rename_input: TextArea<'a>,
     pub show_rename_input: bool,
     pub show_import_menu: bool,
+    pub show_help: bool,
     pub current_import_type: ImportType,
     pub selected_idx: usize,
     pub url_rect: Rect, pub headers_rect: Rect, pub body_rect: Rect, pub attach_rect: Rect,
@@ -124,6 +125,7 @@ impl<'a> App<'a> {
             rename_input: TextArea::default(),
             show_rename_input: false,
             show_import_menu: false,
+            show_help: false,
             current_import_type: ImportType::None,
             selected_idx: 0,
             url_rect: Rect::default(), headers_rect: Rect::default(), body_rect: Rect::default(), attach_rect: Rect::default(),
@@ -137,7 +139,7 @@ impl<'a> App<'a> {
     pub fn current_tab_mut(&mut self) -> &mut RequestTab<'a> { &mut self.tabs[self.active_tab] }
 
     pub fn is_input_active(&self) -> bool {
-        self.input_mode || self.show_rename_input || self.show_swagger_input || self.show_key_input || self.show_file_picker
+        self.input_mode || self.show_rename_input || self.show_swagger_input || self.show_key_input || self.show_file_picker || self.show_import_menu || self.show_help
     }
 
     pub fn get_visible_items(&self) -> Vec<CollectionItem> {
@@ -193,6 +195,12 @@ impl<'a> App<'a> {
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) {
+        if self.show_help {
+            if let KeyCode::Esc | KeyCode::Char('?') = key.code {
+                self.show_help = false;
+            }
+            return;
+        }
         if self.show_import_menu {
             match key.code {
                 KeyCode::Esc => self.show_import_menu = false,
@@ -348,6 +356,7 @@ impl<'a> App<'a> {
                 self.key_input = TextArea::default();
                 if let Some(key) = &self.config.gemini_api_key { self.key_input.insert_str(key); }
             },
+            KeyCode::Char('?') => { self.input_mode = false; self.show_help = true; },
             KeyCode::Char('g') => {
                 self.input_mode = false;
                 self.show_swagger_input = true;

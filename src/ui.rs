@@ -133,7 +133,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         .constraints([Constraint::Min(0), Constraint::Length(75)])
         .split(chunks[1]);
 
-    let footer_text = " [H] Hist | [N] Tab | [F] Foc | [^P] Curl | [^I] Import | [R] Ren | [O] Open | [K] API ";
+    let footer_text = " [H] Hist | [N] Tab | [F] Foc | [^P] Curl | [^I] Import | [R] Ren | [?] Help | [K] API ";
     f.render_widget(Paragraph::new(footer_text).style(Style::default().fg(Color::DarkGray)).block(Block::default().borders(Borders::TOP).border_style(Style::default().fg(Color::Magenta))), footer_chunks[0]);
 
     // Dashboard de Sistema - ARTHEMA alineado a la derecha
@@ -196,6 +196,70 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             Line::from(vec![Span::styled("ESC", Style::default().fg(Color::DarkGray)), Span::raw(" to cancel")]),
         ];
         f.render_widget(Paragraph::new(content).block(Block::default().title(" 📥 MASS IMPORT ").borders(Borders::ALL).border_style(Style::default().fg(Color::Cyan))), area);
+    }
+
+    // MODAL: Neural Link Help Manual
+    if app.show_help {
+        let area = centered_rect(80, 80, f.size());
+        f.render_widget(Clear, area);
+        
+        let mut help_text = Vec::new();
+        help_text.push(Line::from(vec![Span::styled(" ARTHEMA - NEURAL LINK SYSTEM MANUAL ", Style::default().fg(Color::Black).bg(Color::Magenta).add_modifier(Modifier::BOLD))]));
+        help_text.push(Line::from(""));
+
+        let categories = vec![
+            ("🎮 NAVIGATION", vec![
+                ("Tab", "Switch Panels (Collections, Editor, Response, AI)"),
+                ("Up/Down", "Navigate through lists and text areas"),
+                ("n", "Next Request Tab"),
+                ("Enter", "Execute Request / Open Folder / Load Item"),
+            ]),
+            ("📝 EDITING", vec![
+                ("i", "Insert Mode (Edit field)"),
+                ("Esc", "Navigation Mode / Close Modals"),
+                ("f", "Cycle Focus (URL -> Headers -> Body -> Attachment)"),
+                ("m / M", "Cycle HTTP Method (Forward / Backward)"),
+                ("b", "Cycle Body Type (JSON, TEXT, FORM)"),
+            ]),
+            ("📁 COLLECTIONS", vec![
+                ("s", "Save current request"),
+                ("r", "Rename selected request"),
+                ("d", "Delete request or attachment"),
+                ("h", "Toggle between Collections and History"),
+            ]),
+            ("🧠 AI AGENT", vec![
+                ("a", "AI Suggest: Suggest an API based on URL"),
+                ("e", "AI Explain: Analyze the technical response"),
+                ("x", "AI Fixer: Analyze and fix request errors"),
+            ]),
+            ("⚡ SYSTEM", vec![
+                ("Ctrl+P", "Paste and Parse cURL from clipboard"),
+                ("Ctrl+I", "Open Mass Import Menu (Swagger, Postman, Bruno)"),
+                ("o", "Open response or attachment in System Viewer"),
+                ("k", "Configure Gemini API Key"),
+                ("?", "Toggle this Help Manual"),
+                ("q", "Exit Arthema (Only in Navigation Mode)"),
+            ]),
+        ];
+
+        for (title, commands) in categories {
+            help_text.push(Line::from(vec![Span::styled(format!(" {} ", title), Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))]));
+            for (key, desc) in commands {
+                help_text.push(Line::from(vec![
+                    Span::styled(format!("  {: <8}", key), Style::default().fg(Color::Yellow)),
+                    Span::styled(" │ ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(desc, Style::default().fg(Color::Gray)),
+                ]));
+            }
+            help_text.push(Line::from(""));
+        }
+
+        f.render_widget(
+            Paragraph::new(help_text)
+                .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(Color::Magenta)).title(" [SYSTEM OVERLAY] "))
+                .wrap(Wrap { trim: false }),
+            area
+        );
     }
 }
 
