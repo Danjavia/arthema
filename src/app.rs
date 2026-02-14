@@ -2,7 +2,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKi
 use std::sync::mpsc;
 use crate::collections::{CollectionManager, ApiRequest};
 use std::time::{Duration, Instant};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use reqwest::Method;
 use tui_textarea::{TextArea, CursorMove};
 use std::process::{Command, Stdio};
@@ -66,12 +66,18 @@ pub enum AppEvent {
     SwaggerImported(Vec<ApiRequest>),
 }
 
+pub enum CollectionItem {
+    Folder(String),
+    Request(usize),
+}
+
 pub struct App<'a> {
     pub tabs: Vec<RequestTab<'a>>,
     pub active_tab: usize,
     pub ai_response: String,
     pub active_panel: ActivePanel,
     pub left_panel_tab: LeftPanelTab,
+    pub expanded_groups: HashSet<String>,
     pub input_mode: bool,
     pub is_ai_loading: bool,
     pub tx: mpsc::Sender<AppEvent>,
@@ -102,6 +108,7 @@ impl<'a> App<'a> {
             tabs: vec![RequestTab::new("Req 1".to_string())], active_tab: 0,
             ai_response: "ARTHEMA SYSTEM READY".to_string(),
             active_panel: ActivePanel::Editor, left_panel_tab: LeftPanelTab::Collections,
+            expanded_groups: HashSet::new(),
             input_mode: false, is_ai_loading: false, tx, rx, collections: CollectionManager::new(),
             config: crate::config::Config::load(),
             key_input: TextArea::default(),
@@ -120,6 +127,32 @@ impl<'a> App<'a> {
 
     pub fn current_tab(&self) -> &RequestTab<'a> { &self.tabs[self.active_tab] }
     pub fn current_tab_mut(&mut self) -> &mut RequestTab<'a> { &mut self.tabs[self.active_tab] }
+
+    pub fn get_visible_items(&self) -> Vec<CollectionItem> {
+        let mut items = Vec::new();
+        let mut groups: Vec<String> = self.collections.requests.iter()
+            .filter_map(|r| r.group.clone())
+            .collect::<HashSet<_>>().into_iter().collect();
+        groups.sort();
+        
+        // Agregar "UNGROUPED" si hay peticiones sin grupo
+        if self.collections.requests.iter().any(|r| r.group.is_none()) {
+            groups.push("UNGROUPED".to_string());
+        }
+
+        for group in groups {
+            items.push(CollectionItem::Folder(group.clone()));
+            if self.expanded_groups.contains(&group) {
+                for (idx, req) in self.collections.requests.iter().enumerate() {
+                    let req_group = req.group.as_deref().unwrap_or("UNGROUPED");
+                    if req_group == group {
+                        items.push(CollectionItem::Request(idx));
+                    }
+                }
+            }
+        }
+        items
+    }
 
     pub fn handle_mouse(&mut self, mouse: MouseEvent, _w: u16, _h: u16) {
         let (x, y) = (mouse.column, mouse.row);
@@ -154,13 +187,16 @@ impl<'a> App<'a> {
                 KeyCode::Enter => {
                     let new_name = self.rename_input.lines()[0].trim().to_string();
                     if !new_name.is_empty() && matches!(self.left_panel_tab, LeftPanelTab::Collections) {
-                        if let Some(req) = self.collections.requests.get(self.selected_idx).cloned() {
-                            let _ = self.collections.delete_request(self.selected_idx);
-                            let mut updated_req = req;
-                            updated_req.name = new_name;
-                            let _ = self.collections.save_request(&updated_req);
-                            let _ = self.collections.load_all();
-                            self.ai_response = "SYSTEM: Request renamed.".to_string();
+                        let visible = self.get_visible_items();
+                        if let Some(CollectionItem::Request(real_idx)) = visible.get(self.selected_idx) {
+                            if let Some(req) = self.collections.requests.get(*real_idx).cloned() {
+                                let _ = self.collections.delete_request(*real_idx);
+                                let mut updated_req = req;
+                                updated_req.name = new_name;
+                                let _ = self.collections.save_request(&updated_req);
+                                let _ = self.collections.load_all();
+                                self.ai_response = "SYSTEM: Request renamed.".to_string();
+                            }
                         }
                     }
                     self.show_rename_input = false;
@@ -248,12 +284,15 @@ impl<'a> App<'a> {
             KeyCode::Char('s') => self.save_current_request(),
             KeyCode::Char('r') => {
                 if matches!(self.left_panel_tab, LeftPanelTab::Collections) {
-                    if let Some(req) = self.collections.requests.get(self.selected_idx) {
-                        self.input_mode = false;
-                        self.rename_input = TextArea::default();
-                        self.rename_input.insert_str(&req.name);
-                        self.show_rename_input = true;
-                        self.active_panel = ActivePanel::Collections;
+                    let visible = self.get_visible_items();
+                    if let Some(CollectionItem::Request(real_idx)) = visible.get(self.selected_idx) {
+                        if let Some(req) = self.collections.requests.get(*real_idx) {
+                            self.input_mode = false;
+                            self.rename_input = TextArea::default();
+                            self.rename_input.insert_str(&req.name);
+                            self.show_rename_input = true;
+                            self.active_panel = ActivePanel::Collections;
+                        }
                     }
                 }
             },
@@ -275,7 +314,15 @@ impl<'a> App<'a> {
             KeyCode::Char('a') => self.trigger_ai_suggestion(),
             KeyCode::Char('e') => self.trigger_ai_explain(),
             KeyCode::Char('x') => self.trigger_ai_fix(),
-            KeyCode::Enter => { if matches!(self.active_panel, ActivePanel::Collections) { self.load_selected_item(); } else if matches!(self.current_tab().editor_focus, EditorFocus::Attachment) { self.open_file_picker(); } else { self.send_request(); } }
+            KeyCode::Enter => { 
+                if matches!(self.active_panel, ActivePanel::Collections) { 
+                    self.load_selected_item(); 
+                } else if matches!(self.current_tab().editor_focus, EditorFocus::Attachment) { 
+                    self.open_file_picker(); 
+                } else { 
+                    self.send_request(); 
+                } 
+            }
             KeyCode::Tab => self.next_panel(),
             KeyCode::Up => self.move_selection(-1),
             KeyCode::Down => self.move_selection(1),
@@ -287,7 +334,12 @@ impl<'a> App<'a> {
         match self.active_panel {
             ActivePanel::Collections => {
                 match self.left_panel_tab {
-                    LeftPanelTab::Collections => { let _ = self.collections.delete_request(self.selected_idx); }
+                    LeftPanelTab::Collections => {
+                        let visible = self.get_visible_items();
+                        if let Some(CollectionItem::Request(real_idx)) = visible.get(self.selected_idx) {
+                            let _ = self.collections.delete_request(*real_idx);
+                        }
+                    }
                     LeftPanelTab::History => { self.collections.delete_history_item(self.selected_idx); }
                 }
                 if self.selected_idx > 0 { self.selected_idx -= 1; }
@@ -387,10 +439,31 @@ impl<'a> App<'a> {
     fn cycle_editor_focus(&mut self) { let tab = self.current_tab_mut(); tab.editor_focus = match tab.editor_focus { EditorFocus::Url => EditorFocus::Headers, EditorFocus::Headers => EditorFocus::Body, EditorFocus::Body => EditorFocus::Attachment, EditorFocus::Attachment => EditorFocus::Url }; }
     fn cycle_method(&mut self, fwd: bool) { let ms = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]; let c = self.current_tab().method.clone(); let p = ms.iter().position(|&m| m == c).unwrap_or(0) as i32; let n = if fwd { (p + 1).rem_euclid(ms.len() as i32) } else { (p - 1).rem_euclid(ms.len() as i32) }; self.current_tab_mut().method = ms[n as usize].to_string(); }
 
-    fn move_selection(&mut self, delta: i32) {
-        match self.active_panel {
-            ActivePanel::Collections => { let count = match self.left_panel_tab { LeftPanelTab::Collections => self.collections.requests.len(), LeftPanelTab::History => self.collections.history.len() }; if count > 0 { self.selected_idx = (self.selected_idx as i32 + delta).rem_euclid(count as i32) as usize; } }
-            ActivePanel::Response => { let t = self.current_tab_mut(); if delta > 0 { t.response_scroll = t.response_scroll.saturating_add(1); } else { t.response_scroll = t.response_scroll.saturating_sub(1); } }
+        fn move_selection(&mut self, delta: i32) {
+
+            match self.active_panel {
+
+                ActivePanel::Collections => {
+
+                    let count = match self.left_panel_tab {
+
+                        LeftPanelTab::Collections => self.get_visible_items().len(),
+
+                        LeftPanelTab::History => self.collections.history.len()
+
+                    };
+
+                    if count > 0 {
+
+                        self.selected_idx = (self.selected_idx as i32 + delta).rem_euclid(count as i32) as usize;
+
+                    }
+
+                }
+
+                ActivePanel::Response => {
+
+     let t = self.current_tab_mut(); if delta > 0 { t.response_scroll = t.response_scroll.saturating_add(1); } else { t.response_scroll = t.response_scroll.saturating_sub(1); } }
             ActivePanel::Editor => {
                 let tab = self.current_tab_mut();
                 let key = if delta > 0 { KeyEvent::new(KeyCode::Down, KeyModifiers::empty()) } else { KeyEvent::new(KeyCode::Up, KeyModifiers::empty()) };
@@ -401,13 +474,37 @@ impl<'a> App<'a> {
     }
 
     fn load_selected_item(&mut self) {
-        let req_clone = match self.left_panel_tab { LeftPanelTab::Collections => self.collections.requests.get(self.selected_idx).cloned(), LeftPanelTab::History => self.collections.history.get(self.selected_idx).cloned() };
-        if let Some(req) = req_clone {
-            let t = self.current_tab_mut();
-            t.url_area = TextArea::default(); t.url_area.insert_str(&req.url);
-            t.headers_area = TextArea::default(); let h = req.headers.iter().map(|(k, v)| format!("{}: {}", k, v)).collect::<Vec<_>>().join("\n"); t.headers_area.insert_str(h);
-            t.body_area = TextArea::default(); if let Some(b) = &req.body { t.body_area.insert_str(b); }
-            t.method = req.method.clone(); self.active_panel = ActivePanel::Editor;
+        if matches!(self.left_panel_tab, LeftPanelTab::Collections) {
+            let visible = self.get_visible_items();
+            if let Some(item) = visible.get(self.selected_idx) {
+                match item {
+                    CollectionItem::Folder(name) => {
+                        if self.expanded_groups.contains(name) {
+                            self.expanded_groups.remove(name);
+                        } else {
+                            self.expanded_groups.insert(name.clone());
+                        }
+                    }
+                    CollectionItem::Request(real_idx) => {
+                        if let Some(req) = self.collections.requests.get(*real_idx).cloned() {
+                            let t = self.current_tab_mut();
+                            t.url_area = TextArea::default(); t.url_area.insert_str(&req.url);
+                            t.headers_area = TextArea::default(); let h = req.headers.iter().map(|(k, v)| format!("{}: {}", k, v)).collect::<Vec<_>>().join("\n"); t.headers_area.insert_str(h);
+                            t.body_area = TextArea::default(); if let Some(b) = &req.body { t.body_area.insert_str(b); }
+                            t.method = req.method.clone(); self.active_panel = ActivePanel::Editor;
+                        }
+                    }
+                }
+            }
+        } else {
+            // Historial (sigue siendo plano)
+            if let Some(req) = self.collections.history.get(self.selected_idx).cloned() {
+                let t = self.current_tab_mut();
+                t.url_area = TextArea::default(); t.url_area.insert_str(&req.url);
+                t.headers_area = TextArea::default(); let h = req.headers.iter().map(|(k, v)| format!("{}: {}", k, v)).collect::<Vec<_>>().join("\n"); t.headers_area.insert_str(h);
+                t.body_area = TextArea::default(); if let Some(b) = &req.body { t.body_area.insert_str(b); }
+                t.method = req.method.clone(); self.active_panel = ActivePanel::Editor;
+            }
         }
     }
 
