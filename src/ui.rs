@@ -39,13 +39,16 @@ pub fn draw(f: &mut Frame, app: &mut App) {
                 let style = if i == app.selected_idx && matches!(app.active_panel, ActivePanel::Collections) {
                     Style::default().fg(Color::Black).bg(Color::Cyan)
                 } else {
-                    Style::default().fg(Color::Green)
+                    match item {
+                        crate::app::CollectionItem::Folder(_) => Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                        crate::app::CollectionItem::Request(_) => Style::default().fg(Color::Green),
+                    }
                 };
 
                 match item {
                     crate::app::CollectionItem::Folder(name) => {
                         let icon = if app.expanded_groups.contains(&name) { "▼ 📂" } else { "▶ 📁" };
-                        ListItem::new(format!("{} {}", icon, name)).style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))
+                        ListItem::new(format!("{} {}", icon, name)).style(style)
                     }
                     crate::app::CollectionItem::Request(real_idx) => {
                         let r = &app.collections.requests[real_idx];
